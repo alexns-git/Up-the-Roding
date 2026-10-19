@@ -1132,6 +1132,11 @@ button{font:inherit}
 .key-plot.noted{border-color:#5a3c5f;background:repeating-linear-gradient(135deg,transparent 0 3px,rgba(60,40,70,.35) 3px 4px);position:relative}
 .key-plot.noted::after{content:'';position:absolute;left:1px;top:1px;width:4px;height:4px;border:1px solid #243746;background:#fff}
 .key-plot.noted.commented::after{background:#243746}
+.link-btn{border:0;background:none;color:#0b6e8a;cursor:pointer;font:inherit;font-size:11px;padding:0 2px}
+.name-bar.attn{outline:2px solid #ef8f00;background:#fff6e0}
+.as-name{flex:1;font-size:12px;color:#5d6b77}
+.admin-row{border-top:1px solid #e4e8eb;margin-top:8px;padding-top:6px;display:flex;flex-direction:column;gap:4px;align-items:flex-start}
+.admin-form{display:flex;gap:6px;width:100%}.admin-form input{flex:1;min-width:0;font:inherit;border:1px solid #c9d2d8;border-radius:6px;padding:5px 7px}
 </style>
 </head>
 <body><div id="map"></div><div id="loading-screen" class="loading-screen"><div class="load-card">Loading River Roding map…</div></div>
@@ -1258,7 +1263,13 @@ try{A.initials=localStorage.getItem(NAME_KEY)||''}catch(_){}
 function rememberName(n){A.initials=n;try{localStorage.setItem(NAME_KEY,n)}catch(_){}}
 const CM={};function commentsFor(t){return CM[t]||(CM[t]=[])}
 function uuid(){if(crypto.randomUUID)return crypto.randomUUID();const b=crypto.getRandomValues(new Uint8Array(16));b[6]=b[6]&15|64;b[8]=b[8]&63|128;const h=[...b].map(x=>x.toString(16).padStart(2,'0')).join('');return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`}
-const CLIENT=uuid();
+let CLIENT='';try{CLIENT=localStorage.getItem('roding-client')||'';if(!CLIENT){CLIENT=uuid();localStorage.setItem('roding-client',CLIENT)}}catch(_){CLIENT=CLIENT||uuid()}
+let ADMIN='';try{ADMIN=localStorage.getItem('roding-admin')||''}catch(_){}
+function isAdmin(){return !!ADMIN}
+const NAME_RE=/^[\p{L}][\p{L}\-]{1,}(?: [\p{L}][\p{L}\-.]*)+$/u,NAME_JUNK=/^(test|asdf|qwerty|abc|xxx|aaa|none|name|user|anon|anonymous)\b/i;
+function validName(v){v=String(v||'').trim().replace(/\s+/g,' ');if(v.length<4||v.length>40||!NAME_RE.test(v)||NAME_JUNK.test(v))return '';const parts=v.split(' ');if(parts[0].length<2)return '';return parts.map(w=>w[0].toUpperCase()+w.slice(1)).join(' ')}
+function requireName(then){if(A.initials)return then();askName=then;renderInspector();setTimeout(()=>{const i=$('#inspector [data-namebar] input');if(i){i.focus();i.closest('.name-bar').classList.add('attn')}},30);toast('Add your name first — first name and an initial')}
+let askName=null;
 function featAnn(id){return A.features[id]||(A.features[id]={})}
 
 let sb=null;try{sb=window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:false,autoRefreshToken:false}})}catch(e){console.warn('Supabase unavailable',e)}
@@ -1267,8 +1278,8 @@ const pendingComments=new Map(); /* id -> row awaiting upload */
 let loaded=false,live=false,syncing=false,syncAgain=false,dirty=false,syncFail=0,syncTimer=null,syncState='loading';
 
 function rowsFromA(){const out={},keep=(o,keys)=>{const d={};for(const k of keys)if(o[k]!==undefined&&o[k]!==null&&o[k]!==false&&o[k]!=='')d[k]=o[k];return d};
-  for(const [id,a] of Object.entries(A.features)){const d=keep(a,['status','category','name','geometry','deleted']);if(a.name==='')d.name='';out[id]={kind:'survey',data:d}}
-  for(const f of A.created){const p=f.properties;out[p.id]={kind:'created',data:{geometry:f.geometry,name:p.name||'',category:p.category,status:p.status,createdAt:p.createdAt}}}
+  for(const [id,a] of Object.entries(A.features)){const d=keep(a,['status','category','name','geometry']);if(a.name==='')d.name='';out[id]={kind:'survey',data:d}}
+  for(const f of A.created){const p=f.properties;out[p.id]={kind:'created',data:{geometry:f.geometry,name:p.name||'',category:p.category,status:p.status,createdAt:p.createdAt,client:p.client||undefined}}}
   for(const [pid,a] of Object.entries(A.plots)){out['p'+pid]={kind:'plot',data:keep({owner:a.owner==='none'?null:a.owner,label:a.label,title:a.title,nosuggest:a.nosuggest},['owner','label','title','nosuggest'])}}
   return out}
 function diff(oldD,newD){const patch={};for(const k of new Set([...Object.keys(oldD),...Object.keys(newD)])){if(!(k in newD))patch[k]=null;else if(JSON.stringify(oldD[k])!==JSON.stringify(newD[k]))patch[k]=newD[k]}return patch}
@@ -1282,9 +1293,8 @@ async function sync(){
     for(const id of new Set([...Object.keys(rows),...Object.keys(snap)])){
       const r=rows[id],old=snap[id];let kind,patch;
       if(r){kind=r.kind;patch=diff(old?old.data:{},r.data)}
-      else if(old&&old.kind==='created'&&!old.data.deleted){kind='created';patch={deleted:true}}
       else continue;
-      if(!Object.keys(patch).length)continue;
+      delete patch.deleted;if(!Object.keys(patch).length)continue;
       const {error}=await sb.rpc('patch_edit',{p_id:id,p_kind:kind,p_patch:patch,p_by:A.initials||null,p_client:CLIENT});
       if(error)throw error;
       const merged={...(old?old.data:{})};for(const [k,v] of Object.entries(patch)){if(v===null)delete merged[k];else merged[k]=v}
@@ -1298,7 +1308,7 @@ async function sync(){
   }catch(e){console.warn('Save failed',e);dirty=true;syncFail++;syncState='error';setTimeout(sync,Math.min(30000,2000*syncFail))}
   finally{syncing=false;renderSync();if(syncAgain){syncAgain=false;sync()}}
 }
-function addComment(target,text){const c={id:uuid(),by:A.initials,at:new Date().toISOString(),text};commentsFor(target).push(c);if(target[0]==='p')redrawPlotsSoon();
+function addComment(target,text){const c={id:uuid(),by:A.initials,at:new Date().toISOString(),text,client:CLIENT};commentsFor(target).push(c);if(target[0]==='p')redrawPlotsSoon();
   pendingComments.set(c.id,{id:c.id,target,author:c.by||null,body:text,created_at:c.at,client:CLIENT});save();return c}
 
 /* ---- applying shared state to the map ---- */
@@ -1318,7 +1328,7 @@ function applyRow(id,kind,data){
     const i=A.created.findIndex(f=>f.properties.id===id),r=recs.get(id);
     if(data.deleted){if(i>=0)A.created.splice(i,1);if(r){dropLayers(r);recs.delete(id)}}
     else if(data.geometry){
-      const props={id,name:data.name||'',category:data.category||'infrastructure',status:data.status||'unassessed',description:'',createdAt:data.createdAt||null};
+      const props={id,name:data.name||'',category:data.category||'infrastructure',status:data.status||'unassessed',description:'',createdAt:data.createdAt||null,client:data.client||''};
       if(i<0){const f={type:'Feature',geometry:data.geometry,properties:props};A.created.push(f);makeRecord(f,'new')}
       else{const f=A.created[i];f.geometry=data.geometry;Object.assign(f.properties,props);
         if(r&&editingRec!==r){r.name=props.name;r.cat=CATS[props.category]?props.category:'infrastructure';r.status=STATUS[props.status]?props.status:'unassessed';r.feature={...r.feature,geometry:data.geometry};restyle(r)}}
@@ -1330,7 +1340,7 @@ function applyRow(id,kind,data){
 }
 function applyRemoteEdit(row){snap[row.id]={kind:row.kind,data:row.data||{}};applyRow(row.id,row.kind,row.data)}
 function applyRemoteComment(c){const arr=commentsFor(c.target);if(arr.some(x=>x.id===c.id))return;if(c.target[0]==='p')redrawPlotsSoon();
-  arr.push({id:c.id,by:c.author||'',at:c.created_at,text:c.body});arr.sort((a,b)=>String(a.at).localeCompare(String(b.at)));refreshInspectorFor(c.target)}
+  arr.push({id:c.id,by:c.author||'',at:c.created_at,text:c.body,client:c.client||''});arr.sort((a,b)=>String(a.at).localeCompare(String(b.at)));refreshInspectorFor(c.target)}
 
 async function fetchAll(table){let out=[],from=0;for(;;){const {data,error}=await sb.from(table).select('*').order(table==='comments'?'created_at':'id').range(from,from+999);if(error)throw error;out=out.concat(data);if(data.length<1000)return out;from+=1000}}
 let linkOpened=false;function openLinkedItem(){if(linkOpened)return;linkOpened=true;const id=decodeURIComponent(location.hash.slice(1));if(id)goToTarget(id)}
@@ -1348,6 +1358,7 @@ function subscribeLive(){
     .on('postgres_changes',{event:'INSERT',schema:'public',table:'activity'},p=>{if(p.new)activityArrived(p.new)})
     .on('postgres_changes',{event:'*',schema:'public',table:'edits'},p=>{const r=p.new;if(!r||!r.id||r.client===CLIENT)return;applyRemoteEdit(r)})
     .on('postgres_changes',{event:'INSERT',schema:'public',table:'comments'},p=>{const c=p.new;if(!c||c.client===CLIENT)return;applyRemoteComment(c)})
+    .on('postgres_changes',{event:'DELETE',schema:'public',table:'comments'},p=>{const c=p.old;if(!c||!c.id)return;for(const [t,arr] of Object.entries(CM)){const i=arr.findIndex(x=>x.id===c.id);if(i>=0){arr.splice(i,1);refreshInspectorFor(t);if(t[0]==='p')redrawPlotsSoon();break}}})
     .subscribe(st=>{live=st==='SUBSCRIBED';renderSync()});
 }
 /* one-off: upload edits made before the map was shared (stored in this browser only) */
@@ -1593,7 +1604,7 @@ async function goToTarget(id){
     if(!map.hasLayer(parcelLayer)){map.addLayer(parcelLayer);const cb=$('[data-ref="parcels"]');if(cb)cb.checked=true;updateHiddenNote()}
     map.fitBounds(L.geoJSON(f).getBounds(),{maxZoom:17,paddingBottomRight:[360,0],animate:false});selectHit({kind:'plot',id,feature:f},[]);return}
   const r=recs.get(id);if(!r){toast('That item has been deleted');return}
-  if(r.deleted){toast('That item was removed from the map',()=>{r.deleted=false;delete featAnn(r.id).deleted;applyVisibility(r);save();updateRestoreRow();goToTarget(id)},'Restore');return}
+  if(r.deleted){if(isAdmin())toast('That item was removed from the map',()=>{serverRemove(r.id,true).then(()=>{r.deleted=false;applyVisibility(r);const d={...(snap[r.id]?snap[r.id].data:{})};delete d.deleted;snap[r.id]={kind:'survey',data:d};updateRestoreRow();goToTarget(id)}).catch(()=>toast("Couldn't restore"))},'Restore');else toast('That item was removed from the map');return}
   if(!visibleRec(r)){statusOn[r.status]=true;catOn[r.cat]=true;syncFilterControls();refreshAllVisibility()}
   const b=L.geoJSON(r.feature).getBounds();
   if(r._pin)map.setView(b.getCenter(),Math.max(map.getZoom(),16),{animate:false});else map.fitBounds(b,{maxZoom:17,paddingTopLeft:[60,60],paddingBottomRight:[380,60],animate:false});
@@ -1609,9 +1620,13 @@ document.addEventListener('keydown',e=>{if(e.key!=='Escape'||e.target.closest&&e
 /* ======================= inspector ======================= */
 let editingRec=null;
 function fmtDate(iso){const d=new Date(iso);return d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}
-function commentsHtml(list,first){const items=[];if(first)items.push(`<div class="comment paul"><div>${esc(first)}</div><div class="meta">Paul · survey note</div></div>`);for(const c of list||[])items.push(`<div class="comment"><div>${esc(c.text)}</div><div class="meta">${esc(c.by||'—')} · ${fmtDate(c.at)}</div></div>`);return items.length?items.join(''):'<div class="ins-hint">No comments yet.</div>'}
-function commentForm(){return `<form class="comment-form" data-cform><textarea placeholder="Add a comment — what's the plan here?" required></textarea><div class="row"><input placeholder="Your name" maxlength="40" value="${esc(A.initials)}" required aria-label="Your name"><button class="btn primary" type="submit">Add comment</button></div></form>`}
-function bindCommentForm(root,target){const f=$('[data-cform]',root);if(!f)return;f.addEventListener('submit',ev=>{ev.preventDefault();const t=f.querySelector('textarea').value.trim(),by=f.querySelector('input').value.trim();if(!t||!by)return;rememberName(by);addComment(target,t);f.querySelector('textarea').value='';renderInspector()})}
+function canDropComment(c){return isAdmin()||(c.client&&c.client===CLIENT)}
+function commentsHtml(list,first){const items=[];if(first)items.push(`<div class="comment paul"><div>${esc(first)}</div><div class="meta">Paul · survey note</div></div>`);for(const c of list||[])items.push(`<div class="comment"><div>${esc(c.text)}</div><div class="meta">${esc(c.by||'—')} · ${fmtDate(c.at)}${canDropComment(c)?` <button type="button" class="link-btn" data-delcomment="${esc(c.id)}">delete</button>`:''}</div></div>`);return items.length?items.join(''):'<div class="ins-hint">No comments yet.</div>'}
+function commentForm(){return `<form class="comment-form" data-cform><textarea placeholder="Add a comment — what's the plan here?" required></textarea><div class="row"><span class="as-name">as ${esc(A.initials||'…')}</span><button class="btn primary" type="submit">Add comment</button></div></form>`}
+function bindCommentForm(root,target){const f=$('[data-cform]',root);if(f)f.addEventListener('submit',ev=>{ev.preventDefault();const t=f.querySelector('textarea').value.trim();if(!t)return;requireName(()=>{addComment(target,t);renderInspector()})});
+  root.querySelectorAll('[data-delcomment]').forEach(b=>b.addEventListener('click',async()=>{const id=b.dataset.delcomment,arr=commentsFor(target),i=arr.findIndex(c=>c.id===id);if(i<0)return;const [c]=arr.splice(i,1);renderInspector();if(target[0]==='p')redrawPlotsSoon();
+    if(pendingComments.has(id)){pendingComments.delete(id);return}
+    try{const {error}=await sb.rpc('delete_comment',{p_id:id,p_client:CLIENT,p_secret:ADMIN});if(error)throw error;toast('Comment deleted')}catch(e){arr.splice(i,0,c);renderInspector();toast("Couldn't delete that comment")}}))}
 function pagerHtml(){if(currentHits.length<2)return '';const i=currentHits.indexOf(current);
   const nm=h=>h.kind==='survey'?`${catIcon(h.rec.cat)} ${esc(h.rec.name||'(unnamed)')}`:h.kind==='plot'?`<span class="cat-ic" style="background:#8a949c">#</span> Plot ${esc(h.feature.properties.inspire_id)}`:`<span class="cat-ic" style="background:#1565c0">~</span> ${esc(h.feature.properties.name)}`;
   return `<div class="pager" data-pager><button type="button" data-pg="-1" aria-label="Previous">‹</button><span class="pg-name">${currentHits.length} things here · <b>${i+1}</b> of ${currentHits.length}</span><button type="button" data-pg="1" aria-label="Next">›</button><button type="button" data-pglist aria-label="List all">≡</button><ul>${currentHits.map((h,k)=>`<li class="${k===i?'sel':''}" data-pick="${k}">${nm(h)}</li>`).join('')}</ul></div>`}
@@ -1620,8 +1635,8 @@ function bindPager(root){const pg=$('[data-pager]',root);if(!pg)return;const i=c
   $('[data-pglist]',pg).addEventListener('click',()=>pg.classList.toggle('open'));
   pg.querySelectorAll('[data-pick]').forEach(li=>{li.addEventListener('click',()=>selectHit(currentHits[Number(li.dataset.pick)],currentHits));li.addEventListener('mouseenter',()=>highlightFeature(hitFeature(currentHits[Number(li.dataset.pick)])));li.addEventListener('mouseleave',()=>highlightFeature(hitFeature(current)))})}
 function mapLinks(feature){const b=L.geoJSON(feature).getBounds().getCenter();return `<a href="https://www.google.com/maps?q=${b.lat.toFixed(6)},${b.lng.toFixed(6)}" target="_blank" rel="noopener">Google Maps ↗</a><a href="https://www.google.com/maps?layer=c&cbll=${b.lat.toFixed(6)},${b.lng.toFixed(6)}" target="_blank" rel="noopener">Street View ↗</a>`}
-function nameBar(){return A.initials?'':`<form class="name-bar" data-namebar><label>Your name <input placeholder="e.g. Alex" maxlength="40" required></label><button class="btn primary" type="submit">OK</button><small>So others can see who made each change.</small></form>`}
-function bindNameBar(box){const f=$('[data-namebar]',box);if(!f)return;f.addEventListener('submit',e=>{e.preventDefault();const v=f.querySelector('input').value.trim();if(!v)return;rememberName(v);renderInspector()})}
+function nameBar(){return A.initials?'':`<form class="name-bar" data-namebar><label>Your name <input placeholder="First name and initial, e.g. Paul B" maxlength="40" required autocomplete="name"></label><button class="btn primary" type="submit">OK</button><small>Shown against your changes so others know who made them. Kept on this device only; no cookies.</small></form>`}
+function bindNameBar(box){const f=$('[data-namebar]',box);if(!f)return;f.addEventListener('submit',e=>{e.preventDefault();const v=validName(f.querySelector('input').value);if(!v){f.classList.add('attn');f.querySelector('small').textContent='Please give your first name and at least an initial, letters only — e.g. Paul B';f.querySelector('input').focus();return}rememberName(v);const then=askName;askName=null;renderInspector();if(then)then()})}
 function renderInspector(){
   const box=$('#inspector');if(!box.classList.contains('open')){const k=$('.legend');if(k){keyWasOpen=k.open;k.open=false}}box.classList.add('open');const h=current;let html='';
   if(h.kind==='survey'){const r=h.rec,t=geomType(r.feature.geometry),shape=t==='Point'?'Pin':t==='LineString'?'Line':'Area';
@@ -1629,13 +1644,13 @@ function renderInspector(){
     <div class="ins-label">What needs doing</div><div class="status-row">${Object.entries(STATUS).map(([k,s])=>`<button type="button" class="chip ${r.status===k?'sel':''}" data-status="${k}"><i style="background:${s.colour}"></i>${s.label}</button>`).join('')}</div>
     <div class="ins-label">What it is</div><select class="ins-select" data-cat>${CAT_ORDER.map(c=>`<option value="${c}" ${c===r.cat?'selected':''}>${CATS[c].label}</option>`).join('')}</select>
     <div class="ins-label">Comments</div>${commentsHtml(r.comments,r.description)}${commentForm()}
-    <div class="ins-actions">${editingRec===r?`<button class="btn primary" data-finish>Finish editing shape</button>`:`<button class="btn" data-edit>${t==='Point'?'Move pin':'Edit shape'}</button>`}<button class="btn" data-share>Copy link</button><button class="btn danger" data-delete>Delete</button>${mapLinks(r.feature)}</div>`;
+    <div class="ins-actions">${editingRec===r?`<button class="btn primary" data-finish>Finish editing shape</button>`:`<button class="btn" data-edit>${t==='Point'?'Move pin':'Edit shape'}</button>`}<button class="btn" data-share>Copy link</button>${canDeleteRec(r)?'<button class="btn danger" data-delete>Delete</button>':''}${mapLinks(r.feature)}</div>`;
     box.innerHTML=html;
-    $('[data-name]',box).addEventListener('change',e=>{r.name=e.target.value.trim();persistRec(r,'name');restyle(r);highlightFeature(r.feature)});
-    box.querySelectorAll('[data-status]').forEach(b=>b.addEventListener('click',()=>{r.status=b.dataset.status;r.inferred=false;persistRec(r,'status');restyle(r);renderInspector()}));
-    $('[data-cat]',box).addEventListener('change',e=>{r.cat=e.target.value;persistRec(r,'category');restyle(r);renderInspector()});
+    $('[data-name]',box).addEventListener('change',e=>{const v=e.target.value.trim();requireName(()=>{r.name=v;persistRec(r,'name');restyle(r);highlightFeature(r.feature)})});
+    box.querySelectorAll('[data-status]').forEach(b=>b.addEventListener('click',()=>requireName(()=>{r.status=b.dataset.status;r.inferred=false;persistRec(r,'status');restyle(r);renderInspector()})));
+    $('[data-cat]',box).addEventListener('change',e=>{const v=e.target.value;requireName(()=>{r.cat=v;persistRec(r,'category');restyle(r);renderInspector()})});
     bindCommentForm(box,r.id);
-    $('[data-edit]',box)?.addEventListener('click',()=>startEdit(r));$('[data-finish]',box)?.addEventListener('click',()=>{finishEdit();renderInspector()});
+    $('[data-edit]',box)?.addEventListener('click',()=>requireName(()=>startEdit(r)));$('[data-finish]',box)?.addEventListener('click',()=>{finishEdit();renderInspector()});
     $('[data-delete]',box)?.addEventListener('click',()=>deleteRec(r));
   } else if(h.kind==='plot'){const p=h.feature.properties,id=p.inspire_id,ann=A.plots[id]||(A.plots[id]={owner:'none',label:'',title:''});const ok=ownerKey(ann);
     html=`<div class="ins-head"><span class="cat-ic" style="background:${OWNER[ok].colour||'#8a949c'}">#</span><div class="ins-title"><div style="font-weight:700;font-size:15px;padding:3px 0">Registered plot</div><div class="ins-sub">INSPIRE ${esc(id)} · ${esc(p.source_authorities)}</div></div><button class="ins-close" data-close aria-label="Close">×</button></div>${pagerHtml()}${nameBar()}
@@ -1644,9 +1659,9 @@ function renderInspector(){
     <div class="ins-label">Comments</div>${commentsHtml(commentsFor('p'+id))}${commentForm()}
     <div class="ins-actions"><button class="btn" data-share>Copy link</button>${mapLinks(h.feature)}</div>`;
     box.innerHTML=html;
-    box.querySelectorAll('[data-owner]').forEach(s=>s.addEventListener('click',()=>{ann.owner=s.dataset.owner;save();parcelLayer.redraw();renderInspector()}));
-    $('[data-label]',box).addEventListener('change',e=>{ann.label=e.target.value.trim();save();parcelLayer.redraw()});
-    $('[data-title]',box).addEventListener('change',e=>{ann.title=cleanTitle(e.target.value);save();parcelLayer.redraw();renderInspector()});
+    box.querySelectorAll('[data-owner]').forEach(s=>s.addEventListener('click',()=>requireName(()=>{ann.owner=s.dataset.owner;save();parcelLayer.redraw();renderInspector()})));
+    $('[data-label]',box).addEventListener('change',e=>{const v=e.target.value.trim();requireName(()=>{ann.label=v;save();parcelLayer.redraw()})});
+    $('[data-title]',box).addEventListener('change',e=>{const v=cleanTitle(e.target.value);requireName(()=>{ann.title=v;save();parcelLayer.redraw();renderInspector()})});
     bindCommentForm(box,'p'+id);
   } else {const p=h.feature.properties;
     html=`<div class="ins-head"><span class="cat-ic" style="background:#1565c0">~</span><div class="ins-title"><div style="font-weight:700;font-size:15px;padding:3px 0">${esc(p.name)}</div><div class="ins-sub">${h.label}${p.covered?' · runs underground here':''}</div></div><button class="ins-close" data-close aria-label="Close">×</button></div>${pagerHtml()}<div class="ins-actions">${mapLinks(h.feature)}</div>`;
@@ -1658,20 +1673,26 @@ function renderInspector(){
 /* ---- geometry editing ---- */
 function startEdit(rec){if(editingRec)finishEdit();if(rec._pin){flushCluster();if(pinCluster.getVisibleParent(rec.main)!==rec.main){map.setView(rec.main.getLatLng(),Math.max(map.getZoom(),16),{animate:false});flushCluster()}}editingRec=rec;clearHighlight();if(rec.casing)casingGroup.removeLayer(rec.casing);rec.main.pm.enable({allowSelfIntersection:true,draggable:true});showHint(`Drag the ${geomType(rec.feature.geometry)==='Point'?'pin':'points'} to adjust. Click a midpoint to add a vertex.`,'Finish',()=>{finishEdit();renderInspector()});renderInspector()}
 function finishEdit(){const r=editingRec;if(!r)return;editingRec=null;if(r.main.pm.enabled())r.main.pm.disable();geometryEdited(r);hideHint();restyle(r);highlightFeature(r.feature)}
-function deleteRec(rec){closeInspector();if(rec.source==='paul'){rec.deleted=true;featAnn(rec.id).deleted=true;applyVisibility(rec);save();toast('Removed from the map',()=>{rec.deleted=false;delete featAnn(rec.id).deleted;applyVisibility(rec);save()});updateRestoreRow()}
-  else{const f=A.created.find(x=>x.properties.id===rec.id);A.created=A.created.filter(x=>x.properties.id!==rec.id);dropLayers(rec);recs.delete(rec.id);save();toast('Deleted',()=>{A.created.push(f);save();const r=makeRecord(f,'new');selectHit({kind:'survey',rec:r,id:r.id},[])})}}
-function updateRestoreRow(){const row=$('#restore-row');if(!row)return;const n=[...recs.values()].filter(r=>r.deleted).length;row.style.display=n?'flex':'none';row.querySelector('.count').textContent=n}
+function canDeleteRec(rec){return isAdmin()||(rec.source==='new'&&rec.feature.properties.client===CLIENT)}
+async function serverRemove(id,restore){if(!sb)throw new Error('offline');const {error}=await sb.rpc('remove_item',{p_id:id,p_client:CLIENT,p_secret:ADMIN,p_by:A.initials||null,p_restore:!!restore});if(error)throw error}
+function deleteRec(rec){closeInspector();
+  if(rec.source==='paul'){rec.deleted=true;applyVisibility(rec);updateRestoreRow();serverRemove(rec.id,false).then(()=>{snap[rec.id]={kind:'survey',data:{...(snap[rec.id]?snap[rec.id].data:{}),deleted:true}};toast('Removed from the map')}).catch(()=>{rec.deleted=false;applyVisibility(rec);updateRestoreRow();toast("Couldn't remove that item")})}
+  else{const f=A.created.find(x=>x.properties.id===rec.id);const snapshot=snap[rec.id];A.created=A.created.filter(x=>x.properties.id!==rec.id);dropLayers(rec);recs.delete(rec.id);
+    if(!snapshot){delete snap[rec.id];toast('Deleted');return}
+    serverRemove(rec.id,false).then(()=>{snap[rec.id]={kind:'created',data:{...snapshot.data,deleted:true}};toast('Deleted')}).catch(()=>{A.created.push(f);makeRecord(f,'new');toast("Couldn't delete that item")})}}
+function restoreAll(){const list=[...recs.values()].filter(r=>r.deleted);Promise.all(list.map(r=>serverRemove(r.id,true).then(()=>{r.deleted=false;applyVisibility(r);const d={...(snap[r.id]?snap[r.id].data:{})};delete d.deleted;snap[r.id]={kind:'survey',data:d}}))).then(()=>{updateRestoreRow();toast('Restored')}).catch(()=>{updateRestoreRow();toast("Couldn't restore — admin only")})}
+function updateRestoreRow(){const row=$('#restore-row');if(!row)return;const n=[...recs.values()].filter(r=>r.deleted).length;row.style.display=n&&isAdmin()?'flex':'none';row.querySelector('.count').textContent=n}
 
 /* ======================= drawing ======================= */
 let drawing=null;
 map.pm.setGlobalOptions({pmIgnore:false,snappable:true,snapDistance:12,allowSelfIntersection:true,continueDrawing:false});
 map.pm.setPathOptions({color:'#243746',weight:3,dashArray:'6 4',fillColor:'#ffda64',fillOpacity:.25});
-function startDraw(shape){if(editingRec)finishEdit();closeInspector();drawing=shape;map.getContainer().classList.add('drawing');document.querySelectorAll('[data-draw]').forEach(b=>b.classList.toggle('active',b.dataset.draw===shape));
+function startDraw(shape){if(!A.initials){closeInspector();requireName(()=>startDraw(shape));return}if(editingRec)finishEdit();closeInspector();drawing=shape;map.getContainer().classList.add('drawing');document.querySelectorAll('[data-draw]').forEach(b=>b.classList.toggle('active',b.dataset.draw===shape));
   map.pm.enableDraw(shape,{markerStyle:{icon:pinIcon('infrastructure','unassessed')},templineStyle:{color:'#243746',dashArray:'6 4'},hintlineStyle:{color:'#243746',dashArray:'2 6'},finishOn:shape==='Line'?'dblclick':undefined});
   showHint(shape==='Marker'?'Click the map to place a pin.':shape==='Line'?'Click to add points · double-click to finish.':'Click to add corners · click the first point to close.','Cancel',cancelDraw)}
 function cancelDraw(){map.pm.disableDraw();drawing=null;map.getContainer().classList.remove('drawing');document.querySelectorAll('[data-draw]').forEach(b=>b.classList.remove('active'));hideHint()}
 map.on('pm:create',e=>{const gj=e.layer.toGeoJSON();map.removeLayer(e.layer);cancelDraw();
-  const f={type:'Feature',geometry:gj.geometry,properties:{id:'n'+uuid().slice(0,12),name:'',category:'infrastructure',status:'unassessed',description:'',createdAt:new Date().toISOString()}};
+  const f={type:'Feature',geometry:gj.geometry,properties:{id:'n'+uuid().slice(0,12),name:'',category:'infrastructure',status:'unassessed',description:'',createdAt:new Date().toISOString(),client:CLIENT}};
   A.created.push(f);save();const rec=makeRecord(f,'new');selectHit({kind:'survey',rec,id:rec.id},[]);setTimeout(()=>$('#inspector [data-name]')?.focus(),50)});
 
 /* ======================= controls ======================= */
@@ -1745,15 +1766,18 @@ mainRiverLayer.remove();tributaryLayer.remove();osmLayer.remove();riversGroup.ad
   <label class="layer-row sub"><input type="checkbox" data-plotfocus><span>Only plots with notes</span></label>
   <label class="layer-row"><input type="checkbox" checked data-ref="rivers"><span>River &amp; tributaries</span></label>
   <label class="layer-row"><input type="checkbox" checked data-ref="basin"><span>Catchment boundary</span></label>
-  <div class="layer-row" id="restore-row" style="display:none"><span>Removed survey items</span><span class="count">0</span><button type="button" class="btn" data-restore>Restore all</button></div>`;
+  <div class="layer-row" id="restore-row" style="display:none"><span>Removed survey items</span><span class="count">0</span><button type="button" class="btn" data-restore>Restore all</button></div>
+  <div class="admin-row"><button type="button" class="link-btn" data-adminlink>${isAdmin()?'Admin mode on · sign out':'Admin'}</button><form class="admin-form" data-adminform hidden><input type="password" placeholder="Admin passphrase" autocomplete="off"><button class="btn primary" type="submit">Unlock</button></form></div>`;
   const a=document.createElement('div');a.className='activity-panel';a.innerHTML='<div class="panel-head"><h3>Recent changes</h3><button type="button" class="ins-close" data-closepanel aria-label="Close">×</button></div><ul class="act-list" data-actlist></ul><button type="button" class="btn act-more" data-actmore hidden>Show older changes</button>';
   w.append(d,a);L.DomEvent.disableClickPropagation(w);L.DomEvent.disableScrollPropagation(w);
   d.querySelectorAll('[data-sf]').forEach(b=>b.addEventListener('click',()=>{statusOn[b.dataset.sf]=!statusOn[b.dataset.sf];syncFilterControls();refreshAllVisibility()}));
   d.querySelectorAll('[data-cf]').forEach(i=>i.addEventListener('change',()=>{catOn[i.dataset.cf]=i.checked;refreshAllVisibility()}));
-  $('[data-restore]',d).addEventListener('click',()=>{for(const r of recs.values())if(r.deleted){r.deleted=false;delete featAnn(r.id).deleted;applyVisibility(r)}save();updateRestoreRow();toast('Restored')});setTimeout(updateRestoreRow,0);
+  $('[data-restore]',d).addEventListener('click',restoreAll);setTimeout(updateRestoreRow,0);
   d.querySelectorAll('[data-ref]').forEach(i=>i.addEventListener('change',()=>{const l=REF_LAYERS[i.dataset.ref];if(i.checked)map.addLayer(l);else map.removeLayer(l);updateHiddenNote()}));
   $('[data-plotfocus]',d).addEventListener('change',e=>{plotFocus=e.target.checked;parcelLayer.redraw();updateHiddenNote()});
-  $('[data-actmore]',a).addEventListener('click',loadOlderActivity);$('[data-showall]',d).addEventListener('click',showEverything);
+  $('[data-actmore]',a).addEventListener('click',loadOlderActivity);
+  const al=$('[data-adminlink]',d),af=$('[data-adminform]',d);al.addEventListener('click',()=>{if(isAdmin()){ADMIN='';try{localStorage.removeItem('roding-admin')}catch(_){}al.textContent='Admin';toast('Admin mode off');if(current)renderInspector();updateRestoreRow();return}af.hidden=!af.hidden;if(!af.hidden)af.querySelector('input').focus()});
+  af.addEventListener('submit',async e=>{e.preventDefault();const v=af.querySelector('input').value;if(!v||!sb)return;const {data,error}=await sb.rpc('is_admin',{p_secret:v});if(error||!data){toast('That passphrase was not accepted');return}ADMIN=v;try{localStorage.setItem('roding-admin',v)}catch(_){}af.hidden=true;af.querySelector('input').value='';al.textContent='Admin mode on · sign out';toast('Admin mode on — you can delete anything');if(current)renderInspector();updateRestoreRow()});$('[data-showall]',d).addEventListener('click',showEverything);
   w.querySelectorAll('[data-closepanel]').forEach(b=>b.addEventListener('click',()=>togglePanel(w.dataset.panel)));
   $('#map').appendChild(w)})();
 function syncFilterControls(){document.querySelectorAll('[data-sf]').forEach(b=>b.classList.toggle('off',!statusOn[b.dataset.sf]));document.querySelectorAll('[data-cf]').forEach(i=>i.checked=!!catOn[i.dataset.cf]);
@@ -1767,6 +1791,7 @@ const ACT_PAGE=40;let actRows=[],actLoaded=false,actLoading=false,actMore=false;
 function itemLabel(target,ch){if(target[0]==='p'){const a=A.plots[target.slice(1)]||{},pt=plotTitle(target.slice(1));return pt?`title ${pt.t}${a.label?' ('+a.label+')':''}`:`plot ${target.slice(1)}${a.label?' ('+a.label+')':''}`}
   const r=recs.get(target);const nm=(r&&r.name)||(ch&&ch.name&&ch.name.to)||'';const shape=r?({Point:'pin',LineString:'line',Polygon:'area'}[geomType(r.feature.geometry)]||'item'):'item';return nm?nm:`an unnamed ${shape}`}
 function describe(a){const ch=a.changes||{},it=`<i>${esc(itemLabel(a.target,ch))}</i>`,r=recs.get(a.target);
+  if(a.action==='uncomment')return `deleted a comment on ${it}`;
   if(a.action==='comment')return `commented on ${it}: “${esc((a.body||'').slice(0,90))}${(a.body||'').length>90?'…':''}”`;
   if(a.action==='create'){const shape=r?({Point:'a pin',LineString:'a line',Polygon:'an area'}[geomType(r.feature.geometry)]||'an item'):'an item';const nm=ch.name&&ch.name.to;return `added ${shape}${nm?` — <i>${esc(nm)}</i>`:''}`}
   if(a.action==='delete')return `removed ${it}`;if(a.action==='restore')return `restored ${it}`;
@@ -1782,7 +1807,7 @@ function describe(a){const ch=a.changes||{},it=`<i>${esc(itemLabel(a.target,ch))
 function dayLabel(d){const t=new Date(),y=new Date(t);y.setDate(t.getDate()-1);const same=(a,b)=>a.toDateString()===b.toDateString();return same(d,t)?'Today':same(d,y)?'Yesterday':d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})}
 function renderActivity(){const ul=$('[data-actlist]');if(!ul)return;if(!actRows.length){ul.innerHTML=`<li class="act-empty">${actLoading?'Loading…':'No changes yet.'}</li>`;return}
   let html='',lastDay='';for(const a of actRows){const d=new Date(a.at),dl=dayLabel(d);if(dl!==lastDay){html+=`<li class="act-day">${dl}</li>`;lastDay=dl}
-    html+=`<li class="act-row" data-target="${esc(a.target)}" tabindex="0"><div><b>${esc(a.actor||'Someone')}</b> ${describe(a)}</div><time>${d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</time></li>`}
+    html+=`<li class="act-row" data-target="${esc(a.target)}" tabindex="0"><div><b>${esc(a.actor||(a.action==='uncomment'?'Its author or an admin':'Someone'))}</b> ${describe(a)}</div><time>${d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</time></li>`}
   ul.innerHTML=html;$('[data-actmore]').hidden=!actMore;
   ul.querySelectorAll('.act-row').forEach(li=>{const go=()=>goToTarget(li.dataset.target);li.addEventListener('click',go);li.addEventListener('keydown',e=>{if(e.key==='Enter')go()})})}
 async function fetchActivity(beforeId){let q=sb.from('activity').select('*').order('id',{ascending:false}).limit(ACT_PAGE);if(beforeId)q=q.lt('id',beforeId);const {data,error}=await q;if(error)throw error;return data}

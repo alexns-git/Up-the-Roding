@@ -1092,14 +1092,18 @@ button{font:inherit}
 .sync-pill{opacity:0;transition:opacity .3s;pointer-events:none}
 .sync-pill.show{opacity:1}
 
-.icon-btn{border:0;background:none;cursor:pointer;color:#5d6b77;width:26px;height:26px;border-radius:6px;display:none;align-items:center;justify-content:center;position:relative;margin-left:auto;margin-right:2px}
-.icon-btn svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.icon-btn:hover{background:#eef3f6;color:#243746}
-.icon-btn.on{display:inline-flex;color:#c27100}
-.icon-btn[data-tip]:hover::after{content:attr(data-tip);position:absolute;right:0;top:30px;background:#243746;color:#fff;padding:4px 8px;border-radius:6px;white-space:nowrap;font-size:11.5px;font-weight:400;pointer-events:none;z-index:2}
 .panel-head .ins-close{margin-left:0}
 .panel-head h3{margin-right:auto}
 .draw-hint{top:12px}
+
+.show-all{display:none;width:100%;box-sizing:border-box;align-items:center;gap:7px;border:1px solid #f0d58a;background:#fff6e0;color:#5a4300;border-radius:8px;padding:7px 10px;margin:2px 0 6px;cursor:pointer;font-weight:600;font-size:12px;text-align:left}
+.show-all.on{display:flex}
+.show-all:hover{background:#ffefc4}
+.show-all svg{width:17px;height:17px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.layer-head.group{display:block;margin-top:8px}
+.layer-head.group small{display:block;text-transform:none;letter-spacing:0;font-size:11px;color:#8a949c;font-weight:400;margin-top:1px}
+.layer-head.group:first-of-type{border-top:0;padding-top:2px}
+.layer-sub{font-size:11px;font-weight:600;color:#3d4c58;margin:8px 0 3px}
 </style>
 </head>
 <body><div id="map"></div><div id="loading-screen" class="loading-screen"><div class="load-card">Loading River Roding map…</div></div>
@@ -1676,9 +1680,9 @@ function togglePanel(name){const w=$('#layers-wrap'),next=w.dataset.panel===name
 const REF_LAYERS={parcels:parcelLayer,main:mainRiverLayer,trib:tributaryLayer,basin:basinLayer};
 (function buildDrawer(){const w=document.createElement('div');w.className='layers-wrap';w.id='layers-wrap';w.dataset.panel='';const d=document.createElement('div');d.className='layers';
   const counts={};for(const r of recs.values())counts[r.cat]=(counts[r.cat]||0)+1;
-  d.innerHTML=`<div class="panel-head"><h3>Layers &amp; filters</h3><button type="button" class="icon-btn show-all" data-showall data-tip="Show everything" aria-label="Show everything"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.7"/><path d="M4 4v5h5"/></svg></button><button type="button" class="ins-close" data-closepanel aria-label="Close">×</button></div><div class="layer-head"><span>What needs doing</span></div><div class="status-row">${Object.entries(STATUS).map(([k,s])=>`<button type="button" class="chip" data-sf="${k}"><i style="background:${s.colour}"></i>${s.label}</button>`).join('')}</div>
-  <div class="layer-head"><span>What it is</span></div>${CAT_ORDER.map(c=>`<label class="layer-row"><input type="checkbox" checked data-cf="${c}">${catIcon(c)}<span>${CATS[c].label}</span><span class="count">${counts[c]||0}</span></label>`).join('')}
-  <div class="layer-head"><span>Reference</span></div>
+  d.innerHTML=`<div class="panel-head"><h3>Layers &amp; filters</h3><button type="button" class="ins-close" data-closepanel aria-label="Close">×</button></div><button type="button" class="show-all" data-showall><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.6"/></svg>Some items hidden · show all</button><div class="layer-head group"><span>Survey items</span><small>Paul's survey and anything added since</small></div><div class="layer-sub">Status</div><div class="status-row">${Object.entries(STATUS).map(([k,s])=>`<button type="button" class="chip" data-sf="${k}"><i style="background:${s.colour}"></i>${s.label}</button>`).join('')}</div>
+  <div class="layer-sub">Type</div>${CAT_ORDER.map(c=>`<label class="layer-row"><input type="checkbox" checked data-cf="${c}">${catIcon(c)}<span>${CATS[c].label}</span><span class="count">${counts[c]||0}</span></label>`).join('')}
+  <div class="layer-head group"><span>Reference</span><small>Fixed background layers</small></div>
   <label class="layer-row"><input type="checkbox" checked data-ref="parcels"><span>Land Registry plots</span><span class="count">zoom in</span></label>
   <label class="layer-row"><input type="checkbox" checked data-ref="main"><span>Main Roding &amp; Barking Creek</span></label>
   <label class="layer-row"><input type="checkbox" checked data-ref="trib"><span>Tributaries</span></label>

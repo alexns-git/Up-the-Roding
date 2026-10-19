@@ -1116,6 +1116,8 @@ button{font:inherit}
 .layer-head.group:first-of-type{border-top:0;padding-top:2px}
 .layer-sub{font-size:11px;font-weight:600;color:#3d4c58;margin:8px 0 3px}
 .key-line{width:34px;height:12px;flex:none}
+.title-row{display:flex;gap:6px;align-items:center}.title-row input{flex:1;text-transform:uppercase;font-family:ui-monospace,Menlo,Consolas,monospace;letter-spacing:.5px}.title-row .btn{text-decoration:none}
+.ins-hint a{color:#0b6e8a}
 </style>
 </head>
 <body><div id="map"></div><div id="loading-screen" class="loading-screen"><div class="load-card">Loading River Roding map…</div></div>
@@ -1153,7 +1155,8 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 <script>
 /* River Roding plan map — application code */
 'use strict';
-const HMLR_SEARCH='https://www.gov.uk/search-property-information-land-registry?searchType=titleNumber';
+const HMLR_SEARCH='https://search-property-information.service.gov.uk/search/search-by-inspire-id',HMLR_TITLE='https://search-property-information.service.gov.uk/search/search-by-title-number';
+function cleanTitle(v){return String(v||'').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,12)}
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 const $=(sel,root=document)=>root.querySelector(sel);
 
@@ -1251,7 +1254,7 @@ let loaded=false,live=false,syncing=false,syncAgain=false,dirty=false,syncFail=0
 function rowsFromA(){const out={},keep=(o,keys)=>{const d={};for(const k of keys)if(o[k]!==undefined&&o[k]!==null&&o[k]!==false&&o[k]!=='')d[k]=o[k];return d};
   for(const [id,a] of Object.entries(A.features)){const d=keep(a,['status','category','name','geometry','deleted']);if(a.name==='')d.name='';out[id]={kind:'survey',data:d}}
   for(const f of A.created){const p=f.properties;out[p.id]={kind:'created',data:{geometry:f.geometry,name:p.name||'',category:p.category,status:p.status,createdAt:p.createdAt}}}
-  for(const [pid,a] of Object.entries(A.plots)){out['p'+pid]={kind:'plot',data:keep({owner:a.owner==='none'?null:a.owner,label:a.label},['owner','label'])}}
+  for(const [pid,a] of Object.entries(A.plots)){out['p'+pid]={kind:'plot',data:keep({owner:a.owner==='none'?null:a.owner,label:a.label,title:a.title},['owner','label','title'])}}
   return out}
 function diff(oldD,newD){const patch={};for(const k of new Set([...Object.keys(oldD),...Object.keys(newD)])){if(!(k in newD))patch[k]=null;else if(JSON.stringify(oldD[k])!==JSON.stringify(newD[k]))patch[k]=newD[k]}return patch}
 function save(){dirty=true;renderSync();clearTimeout(syncTimer);syncTimer=setTimeout(sync,250)}
@@ -1306,7 +1309,7 @@ function applyRow(id,kind,data){
         if(r&&editingRec!==r){r.name=props.name;r.cat=CATS[props.category]?props.category:'infrastructure';r.status=STATUS[props.status]?props.status:'unassessed';r.feature={...r.feature,geometry:data.geometry};restyle(r)}}
     }
   } else if(kind==='plot'){
-    A.plots[id.slice(1)]={owner:OWNER[data.owner]?data.owner:'none',label:data.label||''};redrawPlotsSoon();
+    A.plots[id.slice(1)]={owner:OWNER[data.owner]?data.owner:'none',label:data.label||'',title:cleanTitle(data.title)};redrawPlotsSoon();
   }
   refreshInspectorFor(id);
 }
@@ -1531,7 +1534,7 @@ function hoverHalo(feature,key){if(hoverKey===key)return;hoverOff();hoverKey=key
 function hoverOff(){if(hoverLayer){map.removeLayer(hoverLayer);hoverLayer=null}hoverKey=null}
 let hoverRaf=0,hoverPinRec=null;
 const hoverTip=L.tooltip({className:'ft-tip',direction:'top',offset:[0,-10],interactive:false});
-function hoverLabel(h){if(h.kind==='survey')return tipHtml(h.rec);if(h.kind==='plot')return `<b>Plot ${esc(h.feature.properties.inspire_id)}</b><small>${esc(OWNER[ownerKey(A.plots[h.feature.properties.inspire_id])].label)}${A.plots[h.feature.properties.inspire_id]&&A.plots[h.feature.properties.inspire_id].label?' · '+esc(A.plots[h.feature.properties.inspire_id].label):''}</small>`;return `<b>${esc(h.feature.properties.name)}</b><small>${h.label}${h.feature.properties.covered?' · underground':''}</small>`}
+function hoverLabel(h){if(h.kind==='survey')return tipHtml(h.rec);if(h.kind==='plot'){const a=A.plots[h.feature.properties.inspire_id]||{};return `<b>${a.title?'Title '+esc(a.title):'Plot '+esc(h.feature.properties.inspire_id)}</b><small>${esc(OWNER[ownerKey(a)].label)}${a.label?' · '+esc(a.label):''}</small>`}return `<b>${esc(h.feature.properties.name)}</b><small>${h.label}${h.feature.properties.covered?' · underground':''}</small>`}
 function setHover(h,latlng){const key=h?h.id:null;
   if(hoverPinRec&&(!h||h.rec!==hoverPinRec)){hoverRec(hoverPinRec,false);hoverPinRec=null}
   if(!h){hoverOff();if(map.hasLayer(hoverTip))map.closeTooltip(hoverTip);map.getContainer().classList.remove('over-feat');return}
@@ -1602,15 +1605,17 @@ function renderInspector(){
     bindCommentForm(box,r.id);
     $('[data-edit]',box)?.addEventListener('click',()=>startEdit(r));$('[data-finish]',box)?.addEventListener('click',()=>{finishEdit();renderInspector()});
     $('[data-delete]',box)?.addEventListener('click',()=>deleteRec(r));
-  } else if(h.kind==='plot'){const p=h.feature.properties,id=p.inspire_id,ann=A.plots[id]||(A.plots[id]={owner:'none',label:''});const ok=ownerKey(ann);
+  } else if(h.kind==='plot'){const p=h.feature.properties,id=p.inspire_id,ann=A.plots[id]||(A.plots[id]={owner:'none',label:'',title:''});const ok=ownerKey(ann);
     html=`<div class="ins-head"><span class="cat-ic" style="background:${OWNER[ok].colour||'#8a949c'}">#</span><div class="ins-title"><div style="font-weight:700;font-size:15px;padding:3px 0">Registered plot</div><div class="ins-sub">INSPIRE ${esc(id)} · ${esc(p.source_authorities)}</div></div><button class="ins-close" data-close aria-label="Close">×</button></div>${pagerHtml()}${nameBar()}
+    <div class="ins-label">Land Registry title number</div><div class="title-row"><input class="text-input" data-title value="${esc(ann.title||'')}" placeholder="e.g. EX123456" maxlength="12" spellcheck="false" autocapitalize="characters">${ann.title?`<a class="btn" href="${HMLR_TITLE}" target="_blank" rel="noopener" title="Open HM Land Registry search">Open ↗</a>`:''}</div>${ann.title?'':`<div class="ins-hint">Find it free: <a href="${HMLR_SEARCH}" target="_blank" rel="noopener">search HM Land Registry by INSPIRE ID</a> ${esc(id)}, then type the title number here.</div>`}
     <div class="ins-label">Owner relationship</div><div class="status-row">${Object.entries(OWNER).map(([k,o])=>`<button type="button" class="chip ${ok===k?'sel':''}" data-owner="${k}"><i style="background:${o.colour||'#fff'};box-shadow:0 0 0 1px #8a949c"></i>${o.label}</button>`).join('')}</div>
     <div class="ins-label">Label</div><input class="text-input" data-label value="${esc(ann.label)}" placeholder="e.g. Smith's farm / Council">
     <div class="ins-label">Comments</div>${commentsHtml(commentsFor('p'+id))}${commentForm()}
-    <div class="ins-actions"><button class="btn" data-share>Copy link</button><a href="${HMLR_SEARCH}" target="_blank" rel="noopener">Look up owner at HM Land Registry ↗</a>${mapLinks(h.feature)}</div>`;
+    <div class="ins-actions"><button class="btn" data-share>Copy link</button>${mapLinks(h.feature)}</div>`;
     box.innerHTML=html;
     box.querySelectorAll('[data-owner]').forEach(s=>s.addEventListener('click',()=>{ann.owner=s.dataset.owner;save();parcelLayer.redraw();renderInspector()}));
     $('[data-label]',box).addEventListener('change',e=>{ann.label=e.target.value.trim();save();parcelLayer.redraw()});
+    $('[data-title]',box).addEventListener('change',e=>{ann.title=cleanTitle(e.target.value);save();renderInspector()});
     bindCommentForm(box,'p'+id);
   } else {const p=h.feature.properties;
     html=`<div class="ins-head"><span class="cat-ic" style="background:#1565c0">~</span><div class="ins-title"><div style="font-weight:700;font-size:15px;padding:3px 0">${esc(p.name)}</div><div class="ins-sub">${h.label}${p.covered?' · runs underground here':''}</div></div><button class="ins-close" data-close aria-label="Close">×</button></div>${pagerHtml()}<div class="ins-actions">${mapLinks(h.feature)}</div>`;
@@ -1651,7 +1656,10 @@ const PC_FULL=/^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i,PC_OUT=/^[A-Z]{1,2}\d[A-Z\d
 function snippet(r,ql){const d=(r.description||'').replace(/\s+/g,' ').trim();if(!d)return CATS[r.cat].label;const i=d.toLowerCase().indexOf(ql);const start=i>30?i-25:0;return (start?'…':'')+d.slice(start,start+70)+(d.length>start+70?'…':'')}
 function searchItems(q){const ql=q.toLowerCase(),out=[];for(const r of recs.values()){if(r.deleted)continue;const n=(r.name||'').toLowerCase();let score=n.startsWith(ql)?0:n.includes(ql)?1:(r.description||'').toLowerCase().includes(ql)?2:-1;if(score<0)continue;out.push([score,r])}
   out.sort((a,b)=>a[0]-b[0]||(a[1].name||'').localeCompare(b[1].name||''));const res=out.slice(0,6).map(([score,r])=>({kind:'item',id:r.id,score,html:`${catIcon(r.cat)}<span><b>${esc(r.name||'(unnamed)')}</b><small><i style="background:${STATUS[r.status].colour}"></i>${esc(snippet(r,ql))}</small></span>`}));
-  if(/^\d{5,}$/.test(q))res.unshift({kind:'item',id:'p'+q,score:0,html:`<span class="cat-ic" style="background:#8a949c">#</span><span><b>Plot ${esc(q)}</b><small>Land Registry plot</small></span>`});return res}
+  const qt=cleanTitle(q),plotHtml=(pid,a)=>`<span class="cat-ic" style="background:${OWNER[ownerKey(a)].colour||'#8a949c'}">#</span><span><b>${a.title?'Title '+esc(a.title):'Plot '+esc(pid)}</b><small>${a.title?'Plot '+esc(pid)+' · ':''}${esc(OWNER[ownerKey(a)].label)}${a.label?' · '+esc(a.label):''}</small></span>`;
+  const plots=[];for(const [pid,a] of Object.entries(A.plots)){if(!a)continue;const hitT=qt.length>=2&&a.title&&a.title.startsWith(qt),hitL=a.label&&a.label.toLowerCase().includes(ql),hitI=/^\d{3,}$/.test(q)&&pid.startsWith(q);if(hitT||hitL||hitI)plots.push({kind:'item',id:'p'+pid,score:hitT?0:1,html:plotHtml(pid,a)})}
+  plots.sort((a,b)=>a.score-b.score);res.unshift(...plots.slice(0,5));
+  if(/^\d{5,}$/.test(q)&&!A.plots[q])res.unshift({kind:'item',id:'p'+q,score:0,html:`<span class="cat-ic" style="background:#8a949c">#</span><span><b>Plot ${esc(q)}</b><small>Land Registry plot</small></span>`});return res}
 async function searchPlaces(q){const key=q.toLowerCase();if(placeCache.has(key))return placeCache.get(key);let res=[];
   try{if(PC_FULL.test(q)){const r=await fetch('https://api.postcodes.io/postcodes/'+encodeURIComponent(q.replace(/\s+/g,''))).then(r=>r.json());if(r.result)res=[{kind:'place',lat:r.result.latitude,lng:r.result.longitude,zoom:17,name:r.result.postcode,sub:[r.result.admin_ward,r.result.admin_district].filter(Boolean).join(', ')}]}
     else if(PC_OUT.test(q)){const r=await fetch('https://api.postcodes.io/outcodes/'+encodeURIComponent(q)).then(r=>r.json());if(r.result)res=[{kind:'place',lat:r.result.latitude,lng:r.result.longitude,zoom:14,name:r.result.outcode,sub:(r.result.admin_district||[]).slice(0,2).join(', ')}]}
@@ -1722,7 +1730,7 @@ function updateHiddenNote(){const n=hiddenCount();document.querySelector('.tool-
 
 /* ---- recent changes ---- */
 const ACT_PAGE=40;let actRows=[],actLoaded=false,actLoading=false,actMore=false;
-function itemLabel(target,ch){if(target[0]==='p'){const a=A.plots[target.slice(1)];return `plot ${target.slice(1)}${a&&a.label?' ('+a.label+')':''}`}
+function itemLabel(target,ch){if(target[0]==='p'){const a=A.plots[target.slice(1)]||{};return a.title?`title ${a.title}${a.label?' ('+a.label+')':''}`:`plot ${target.slice(1)}${a.label?' ('+a.label+')':''}`}
   const r=recs.get(target);const nm=(r&&r.name)||(ch&&ch.name&&ch.name.to)||'';const shape=r?({Point:'pin',LineString:'line',Polygon:'area'}[geomType(r.feature.geometry)]||'item'):'item';return nm?nm:`an unnamed ${shape}`}
 function describe(a){const ch=a.changes||{},it=`<i>${esc(itemLabel(a.target,ch))}</i>`,r=recs.get(a.target);
   if(a.action==='comment')return `commented on ${it}: “${esc((a.body||'').slice(0,90))}${(a.body||'').length>90?'…':''}”`;
@@ -1735,6 +1743,7 @@ function describe(a){const ch=a.changes||{},it=`<i>${esc(itemLabel(a.target,ch))
   if(ch.geometry)parts.push(`${r&&r._pin?'moved':'reshaped'}${first()}`);
   if(ch.owner||(a.target_kind==='plot'&&'owner' in ch)){const o=OWNER[ch.owner&&ch.owner.to]||OWNER.none;parts.push(`set${first()} to <span class="act-st"><i style="background:${o.colour||'#fff'};box-shadow:0 0 0 1px #8a949c"></i>${o.label}</span>`)}
   if(ch.label)parts.push(ch.label.to?`labelled${first()} “${esc(ch.label.to)}”`:`removed the label from${first()}`);
+  if(ch.title){const pl=`<i>plot ${esc(a.target.slice(1))}</i>`;parts.push(ch.title.to?`recorded ${pl} as title ${esc(ch.title.to)}`:`removed the title number from ${pl}`)}
   return parts.length?parts.join(', '):`updated ${it}`}
 function dayLabel(d){const t=new Date(),y=new Date(t);y.setDate(t.getDate()-1);const same=(a,b)=>a.toDateString()===b.toDateString();return same(d,t)?'Today':same(d,y)?'Yesterday':d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})}
 function renderActivity(){const ul=$('[data-actlist]');if(!ul)return;if(!actRows.length){ul.innerHTML=`<li class="act-empty">${actLoading?'Loading…':'No changes yet.'}</li>`;return}

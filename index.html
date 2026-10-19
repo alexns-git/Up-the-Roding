@@ -1126,6 +1126,8 @@ button{font:inherit}
 .cand-o{grid-column:1/-1;font-weight:600;font-size:12.5px}
 .cand-a{grid-column:1/-1;font-size:11.5px;color:#5d6b77;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .title-row input::placeholder{text-transform:none;letter-spacing:0;font-family:inherit}
+.suggest{margin-top:6px}.cand.static{cursor:default;background:#fff8e6;border-color:#f0d58a}.cand.static:hover{border-color:#f0d58a;background:#fff8e6}
+.suggest-actions{display:flex;gap:6px;margin:4px 0 2px}
 </style>
 </head>
 <body><div id="map"></div><div id="loading-screen" class="loading-screen"><div class="load-card">Loading River Roding map…</div></div>
@@ -1264,7 +1266,7 @@ let loaded=false,live=false,syncing=false,syncAgain=false,dirty=false,syncFail=0
 function rowsFromA(){const out={},keep=(o,keys)=>{const d={};for(const k of keys)if(o[k]!==undefined&&o[k]!==null&&o[k]!==false&&o[k]!=='')d[k]=o[k];return d};
   for(const [id,a] of Object.entries(A.features)){const d=keep(a,['status','category','name','geometry','deleted']);if(a.name==='')d.name='';out[id]={kind:'survey',data:d}}
   for(const f of A.created){const p=f.properties;out[p.id]={kind:'created',data:{geometry:f.geometry,name:p.name||'',category:p.category,status:p.status,createdAt:p.createdAt}}}
-  for(const [pid,a] of Object.entries(A.plots)){out['p'+pid]={kind:'plot',data:keep({owner:a.owner==='none'?null:a.owner,label:a.label,title:a.title},['owner','label','title'])}}
+  for(const [pid,a] of Object.entries(A.plots)){out['p'+pid]={kind:'plot',data:keep({owner:a.owner==='none'?null:a.owner,label:a.label,title:a.title,nosuggest:a.nosuggest},['owner','label','title','nosuggest'])}}
   return out}
 function diff(oldD,newD){const patch={};for(const k of new Set([...Object.keys(oldD),...Object.keys(newD)])){if(!(k in newD))patch[k]=null;else if(JSON.stringify(oldD[k])!==JSON.stringify(newD[k]))patch[k]=newD[k]}return patch}
 function save(){dirty=true;renderSync();clearTimeout(syncTimer);syncTimer=setTimeout(sync,250)}
@@ -1319,7 +1321,7 @@ function applyRow(id,kind,data){
         if(r&&editingRec!==r){r.name=props.name;r.cat=CATS[props.category]?props.category:'infrastructure';r.status=STATUS[props.status]?props.status:'unassessed';r.feature={...r.feature,geometry:data.geometry};restyle(r)}}
     }
   } else if(kind==='plot'){
-    A.plots[id.slice(1)]={owner:OWNER[data.owner]?data.owner:'none',label:data.label||'',title:cleanTitle(data.title)};redrawPlotsSoon();
+    A.plots[id.slice(1)]={owner:OWNER[data.owner]?data.owner:'none',label:data.label||'',title:cleanTitle(data.title),nosuggest:!!data.nosuggest};redrawPlotsSoon();
   }
   refreshInspectorFor(id);
 }
@@ -1429,7 +1431,8 @@ function loadCell(k){let c=plotCells.get(k);if(c)return c.promise;c={state:'load
   return c.promise}
 function plotsIn(box){const seen=new Set(),out=[];for(const k of cellKeysFor(box)){const c=plotCells.get(k);if(!c||c.state!=='ok')continue;for(const f of c.feats){if(seen.has(f))continue;seen.add(f);const bb=f.properties._bbox;if(bb[2]<box[0]||bb[0]>box[2]||bb[3]<box[1]||bb[1]>box[3])continue;out.push(f)}}return out}
 /* HM Land Registry titles (company/public-body owners) positioned by postcode, per cell */
-const titleCells=new Map();
+const titleCells=new Map();let AUTO={};fetch('titles/auto.json').then(r=>r.json()).then(d=>{AUTO=d||{}}).catch(()=>{});
+function suggestedTitle(pid){const a=A.plots[pid];if(a&&(a.title||a.nosuggest))return null;const s=AUTO[pid];return s?{t:s[0],owner:s[1],addr:s[2],tenure:s[3]==='L'?'Leasehold':'Freehold'}:null}
 function loadTitleCell(k){let c=titleCells.get(k);if(c)return c.promise;c={state:'loading',rows:[]};titleCells.set(k,c);
   c.promise=fetch('titles/'+k+'.json').then(r=>{if(!r.ok)throw new Error(r.status);return r.json()}).then(d=>{c.rows=d;c.state='ok'}).catch(e=>{titleCells.delete(k)});return c.promise}
 function titleCellsFor(box){const out=[];for(let cx=Math.floor(box[0]/PLOT_DX);cx<=Math.floor(box[2]/PLOT_DX);cx++)for(let cy=Math.floor(box[1]/PLOT_DY);cy<=Math.floor(box[3]/PLOT_DY);cy++){const k=cx+'_'+cy;if(TITLE_CELLS.has(k))out.push(k)}return out}
@@ -1559,7 +1562,7 @@ function hoverHalo(feature,key){if(hoverKey===key)return;hoverOff();hoverKey=key
 function hoverOff(){if(hoverLayer){map.removeLayer(hoverLayer);hoverLayer=null}hoverKey=null}
 let hoverRaf=0,hoverPinRec=null;
 const hoverTip=L.tooltip({className:'ft-tip',direction:'top',offset:[0,-10],interactive:false});
-function hoverLabel(h){if(h.kind==='survey')return tipHtml(h.rec);if(h.kind==='plot'){const a=A.plots[h.feature.properties.inspire_id]||{};return `<b>${a.title?'Title '+esc(a.title):'Plot '+esc(h.feature.properties.inspire_id)}</b><small>${esc(OWNER[ownerKey(a)].label)}${a.label?' · '+esc(a.label):''}</small>`}return `<b>${esc(h.feature.properties.name)}</b><small>${h.label}${h.feature.properties.covered?' · underground':''}</small>`}
+function hoverLabel(h){if(h.kind==='survey')return tipHtml(h.rec);if(h.kind==='plot'){const pid=h.feature.properties.inspire_id,a=A.plots[pid]||{},sg=suggestedTitle(pid);return `<b>${a.title?'Title '+esc(a.title):sg?'Title '+esc(sg.t)+'? ':'Plot '+esc(pid)}</b>${sg?`<small>unconfirmed · ${esc(titleCase(sg.owner))}</small>`:''}<small>${esc(OWNER[ownerKey(a)].label)}${a.label?' · '+esc(a.label):''}</small>`}return `<b>${esc(h.feature.properties.name)}</b><small>${h.label}${h.feature.properties.covered?' · underground':''}</small>`}
 function setHover(h,latlng){const key=h?h.id:null;
   if(hoverPinRec&&(!h||h.rec!==hoverPinRec)){hoverRec(hoverPinRec,false);hoverPinRec=null}
   if(!h){hoverOff();if(map.hasLayer(hoverTip))map.closeTooltip(hoverTip);map.getContainer().classList.remove('over-feat');return}
@@ -1632,7 +1635,8 @@ function renderInspector(){
     $('[data-delete]',box)?.addEventListener('click',()=>deleteRec(r));
   } else if(h.kind==='plot'){const p=h.feature.properties,id=p.inspire_id,ann=A.plots[id]||(A.plots[id]={owner:'none',label:'',title:''});const ok=ownerKey(ann);
     html=`<div class="ins-head"><span class="cat-ic" style="background:${OWNER[ok].colour||'#8a949c'}">#</span><div class="ins-title"><div style="font-weight:700;font-size:15px;padding:3px 0">Registered plot</div><div class="ins-sub">INSPIRE ${esc(id)} · ${esc(p.source_authorities)}</div></div><button class="ins-close" data-close aria-label="Close">×</button></div>${pagerHtml()}${nameBar()}
-    <div class="ins-label">Land Registry title number</div><div class="title-row"><input class="text-input" data-title value="${esc(ann.title||'')}" placeholder="e.g. EX123456" maxlength="12" spellcheck="false" autocapitalize="characters">${ann.title?`<a class="btn" href="${HMLR_TITLE}" target="_blank" rel="noopener" title="Open HM Land Registry search">Open ↗</a>`:''}</div><div class="title-cands" data-cands>${ann.title?'':'<div class="ins-hint">Looking up HM Land Registry…</div>'}</div>
+    <div class="ins-label">Land Registry title number</div><div class="title-row"><input class="text-input" data-title value="${esc(ann.title||'')}" placeholder="e.g. EX123456" maxlength="12" spellcheck="false" autocapitalize="characters">${ann.title?`<a class="btn" href="${HMLR_TITLE}" target="_blank" rel="noopener" title="Open HM Land Registry search">Open ↗</a>`:''}</div>${(()=>{const sg=suggestedTitle(id);return sg?`<div class="suggest"><div class="ins-hint">Likely title, from HM Land Registry data (unconfirmed):</div><div class="cand static"><b>${esc(sg.t)}</b><span class="cand-d">${sg.tenure}</span><span class="cand-o">${esc(sg.owner)}</span><span class="cand-a">${esc(sg.addr)}</span></div><div class="suggest-actions"><button type="button" class="btn primary" data-usesg>Use this title</button><button type="button" class="btn" data-nosg>Not this plot</button></div></div>`:''})()}
+    <div class="title-cands" data-cands>${ann.title||suggestedTitle(id)?'':'<div class="ins-hint">Looking up HM Land Registry…</div>'}</div>
     <div class="ins-label">Owner relationship</div><div class="status-row">${Object.entries(OWNER).map(([k,o])=>`<button type="button" class="chip ${ok===k?'sel':''}" data-owner="${k}"><i style="background:${o.colour||'#fff'};box-shadow:0 0 0 1px #8a949c"></i>${o.label}</button>`).join('')}</div>
     <div class="ins-label">Label</div><input class="text-input" data-label value="${esc(ann.label)}" placeholder="e.g. Smith's farm / Council">
     <div class="ins-label">Comments</div>${commentsHtml(commentsFor('p'+id))}${commentForm()}
@@ -1641,7 +1645,9 @@ function renderInspector(){
     box.querySelectorAll('[data-owner]').forEach(s=>s.addEventListener('click',()=>{ann.owner=s.dataset.owner;save();parcelLayer.redraw();renderInspector()}));
     $('[data-label]',box).addEventListener('change',e=>{ann.label=e.target.value.trim();save();parcelLayer.redraw()});
     $('[data-title]',box).addEventListener('change',e=>{ann.title=cleanTitle(e.target.value);save();renderInspector()});
-    if(!ann.title){const holder=$('[data-cands]',box),mine=current;titleCandidates(h.feature).then(list=>{if(current!==mine||!holder.isConnected)return;
+    $('[data-usesg]',box)?.addEventListener('click',()=>{const sg=suggestedTitle(id);ann.title=sg.t;if(!ann.label)ann.label=titleCase(sg.owner);save();parcelLayer.redraw();renderInspector()});
+    $('[data-nosg]',box)?.addEventListener('click',()=>{ann.nosuggest=true;save();renderInspector()});
+    if(!ann.title&&!suggestedTitle(id)){const holder=$('[data-cands]',box),mine=current;titleCandidates(h.feature).then(list=>{if(current!==mine||!holder.isConnected)return;
       if(!list.length){holder.innerHTML=`<div class="ins-hint">No company or public-body title found nearby. Private owners aren't in the free data: <a href="${HMLR_SEARCH}" target="_blank" rel="noopener">search HM Land Registry by INSPIRE ID</a> ${esc(id)} and type the title number above.</div>`;return}
       holder.innerHTML=`<div class="ins-hint">Possible titles from HM Land Registry data (company and public-body owners):</div>`+list.map((c,i)=>`<button type="button" class="cand" data-cand="${i}"><b>${esc(c.t)}</b> <span class="cand-d">${c.d===0?'postcode point inside this plot':'~'+Math.round(c.d/10)*10+' m away'}</span><span class="cand-o">${esc(c.owner)}</span><span class="cand-a">${esc(c.addr)}</span></button>`).join('')+`<div class="ins-hint">Positions come from postcodes, so check the address fits before using one. Not here? <a href="${HMLR_SEARCH}" target="_blank" rel="noopener">Search HMLR by INSPIRE ID</a> ${esc(id)}.</div>`;
       holder.querySelectorAll('[data-cand]').forEach(b=>b.addEventListener('click',()=>{const c=list[+b.dataset.cand];ann.title=c.t;if(!ann.label)ann.label=titleCase(c.owner);save();parcelLayer.redraw();renderInspector()}))}).catch(()=>{holder.innerHTML=''})}
@@ -1687,7 +1693,8 @@ function searchItems(q){const ql=q.toLowerCase(),out=[];for(const r of recs.valu
   out.sort((a,b)=>a[0]-b[0]||(a[1].name||'').localeCompare(b[1].name||''));const res=out.slice(0,6).map(([score,r])=>({kind:'item',id:r.id,score,html:`${catIcon(r.cat)}<span><b>${esc(r.name||'(unnamed)')}</b><small><i style="background:${STATUS[r.status].colour}"></i>${esc(snippet(r,ql))}</small></span>`}));
   const qt=cleanTitle(q),plotHtml=(pid,a)=>`<span class="cat-ic" style="background:${OWNER[ownerKey(a)].colour||'#8a949c'}">#</span><span><b>${a.title?'Title '+esc(a.title):'Plot '+esc(pid)}</b><small>${a.title?'Plot '+esc(pid)+' · ':''}${esc(OWNER[ownerKey(a)].label)}${a.label?' · '+esc(a.label):''}</small></span>`;
   const plots=[];for(const [pid,a] of Object.entries(A.plots)){if(!a)continue;const hitT=qt.length>=2&&a.title&&a.title.startsWith(qt),hitL=a.label&&a.label.toLowerCase().includes(ql),hitI=/^\d{3,}$/.test(q)&&pid.startsWith(q);if(hitT||hitL||hitI)plots.push({kind:'item',id:'p'+pid,score:hitT?0:1,html:plotHtml(pid,a)})}
-  plots.sort((a,b)=>a.score-b.score);res.unshift(...plots.slice(0,5));
+  if(qt.length>=3)for(const [pid,sv] of Object.entries(AUTO)){if(plots.length>=8)break;if(A.plots[pid]&&(A.plots[pid].title||A.plots[pid].nosuggest))continue;if(sv[0].startsWith(qt)||titleCase(sv[1]).toLowerCase().includes(ql))plots.push({kind:'item',id:'p'+pid,score:2,html:`<span class="cat-ic" style="background:#8a949c">#</span><span><b>Title ${esc(sv[0])}?</b><small>unconfirmed · ${esc(titleCase(sv[1]))}</small></span>`})}
+  plots.sort((a,b)=>a.score-b.score);res.unshift(...plots.slice(0,6));
   if(/^\d{5,}$/.test(q)&&!A.plots[q])res.unshift({kind:'item',id:'p'+q,score:0,html:`<span class="cat-ic" style="background:#8a949c">#</span><span><b>Plot ${esc(q)}</b><small>Land Registry plot</small></span>`});return res}
 async function searchPlaces(q){const key=q.toLowerCase();if(placeCache.has(key))return placeCache.get(key);let res=[];
   try{if(PC_FULL.test(q)){const r=await fetch('https://api.postcodes.io/postcodes/'+encodeURIComponent(q.replace(/\s+/g,''))).then(r=>r.json());if(r.result)res=[{kind:'place',lat:r.result.latitude,lng:r.result.longitude,zoom:17,name:r.result.postcode,sub:[r.result.admin_ward,r.result.admin_district].filter(Boolean).join(', ')}]}

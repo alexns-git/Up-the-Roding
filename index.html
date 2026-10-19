@@ -1128,6 +1128,10 @@ button{font:inherit}
 .title-row input::placeholder{text-transform:none;letter-spacing:0;font-family:inherit}
 .suggest{margin-top:6px}.cand.static{cursor:default;background:#fff8e6;border-color:#f0d58a}.cand.static:hover{border-color:#f0d58a;background:#fff8e6}
 .suggest-actions{display:flex;gap:6px;margin:4px 0 2px}
+.layer-row.sub{padding-left:22px;font-size:12px}
+.key-plot.noted{border-color:#5a3c5f;background:repeating-linear-gradient(135deg,transparent 0 3px,rgba(60,40,70,.35) 3px 4px);position:relative}
+.key-plot.noted::after{content:'';position:absolute;left:1px;top:1px;width:4px;height:4px;border:1px solid #243746;background:#fff}
+.key-plot.noted.commented::after{background:#243746}
 </style>
 </head>
 <body><div id="map"></div><div id="loading-screen" class="loading-screen"><div class="load-card">Loading River Roding map…</div></div>
@@ -1294,7 +1298,7 @@ async function sync(){
   }catch(e){console.warn('Save failed',e);dirty=true;syncFail++;syncState='error';setTimeout(sync,Math.min(30000,2000*syncFail))}
   finally{syncing=false;renderSync();if(syncAgain){syncAgain=false;sync()}}
 }
-function addComment(target,text){const c={id:uuid(),by:A.initials,at:new Date().toISOString(),text};commentsFor(target).push(c);
+function addComment(target,text){const c={id:uuid(),by:A.initials,at:new Date().toISOString(),text};commentsFor(target).push(c);if(target[0]==='p')redrawPlotsSoon();
   pendingComments.set(c.id,{id:c.id,target,author:c.by||null,body:text,created_at:c.at,client:CLIENT});save();return c}
 
 /* ---- applying shared state to the map ---- */
@@ -1325,7 +1329,7 @@ function applyRow(id,kind,data){
   refreshInspectorFor(id);
 }
 function applyRemoteEdit(row){snap[row.id]={kind:row.kind,data:row.data||{}};applyRow(row.id,row.kind,row.data)}
-function applyRemoteComment(c){const arr=commentsFor(c.target);if(arr.some(x=>x.id===c.id))return;
+function applyRemoteComment(c){const arr=commentsFor(c.target);if(arr.some(x=>x.id===c.id))return;if(c.target[0]==='p')redrawPlotsSoon();
   arr.push({id:c.id,by:c.author||'',at:c.created_at,text:c.body});arr.sort((a,b)=>String(a.at).localeCompare(String(b.at)));refreshInspectorFor(c.target)}
 
 async function fetchAll(table){let out=[],from=0;for(;;){const {data,error}=await sb.from(table).select('*').order(table==='comments'?'created_at':'id').range(from,from+999);if(error)throw error;out=out.concat(data);if(data.length<1000)return out;from+=1000}}
@@ -1419,7 +1423,7 @@ const osmLayer=L.geoJSON(osmFeatures,{renderer:waterCanvas,pmIgnore:true,interac
 const riversGroup=L.layerGroup([mainRiverLayer,tributaryLayer,osmLayer]);
 
 /* ---- Land Registry plots: custom canvas, with colour/label overrides ---- */
-const PLOT_DX=0.02,PLOT_DY=0.0125,PLOT_MINZ=14,PARCEL_OVERSCAN=240;
+const PLOT_DX=0.02,PLOT_DY=0.0125,PLOT_MINZ=14,PARCEL_OVERSCAN=240,KX=69000,KY=111000;
 const plotCells=new Map(),plotById=new Map();let plotIdIndex=null,plotRedrawT=null;
 function cellKeysFor(box){const out=[];for(let cx=Math.floor(box[0]/PLOT_DX);cx<=Math.floor(box[2]/PLOT_DX);cx++)for(let cy=Math.floor(box[1]/PLOT_DY);cy<=Math.floor(box[3]/PLOT_DY);cy++){const k=cx+'_'+cy;if(PLOT_CELLS.has(k))out.push(k)}return out}
 function ringBbox(polys,b){for(const poly of polys)for(const c of poly[0]){if(c[0]<b[0])b[0]=c[0];if(c[1]<b[1])b[1]=c[1];if(c[0]>b[2])b[2]=c[0];if(c[1]>b[3])b[3]=c[1]}return b}
@@ -1430,12 +1434,16 @@ function loadCell(k){let c=plotCells.get(k);if(c)return c.promise;c={state:'load
   return c.promise}
 function plotsIn(box){const seen=new Set(),out=[];for(const k of cellKeysFor(box)){const c=plotCells.get(k);if(!c||c.state!=='ok')continue;for(const f of c.feats){if(seen.has(f))continue;seen.add(f);const bb=f.properties._bbox;if(bb[2]<box[0]||bb[0]>box[2]||bb[3]<box[1]||bb[1]>box[3])continue;out.push(f)}}return out}
 /* titles matched with confidence offline (name and outline agree); a title typed by a person always wins */
-let VERIFIED={};fetch('titles/verified.json').then(r=>r.json()).then(d=>{VERIFIED=d||{};if(current&&current.kind==='plot')renderInspector()}).catch(()=>{});
+let VERIFIED={};fetch('titles/verified.json').then(r=>r.json()).then(d=>{VERIFIED=d||{};redrawPlotsSoon();if(current&&current.kind==='plot')renderInspector()}).catch(()=>{});
 function plotTitle(pid){const a=A.plots[pid];if(a&&a.title)return {t:a.title,src:'user'};const v=VERIFIED[pid];return v?{t:v[0],owner:v[1],addr:v[2],src:'hmlr'}:null}
 async function findPlot(id){if(plotById.has(id))return plotById.get(id);
   if(!plotIdIndex)plotIdIndex=fetch('plots/ids.json').then(r=>r.json()).then(d=>{const m=new Map();for(const [k,ids] of Object.entries(d))for(const x of ids)m.set(x,k);return m}).catch(()=>{plotIdIndex=null;return new Map()});
   const k=(await plotIdIndex).get(id);if(!k)return null;await loadCell(k);return plotById.get(id)||null}
 function drawParcelGeom(ctx,g,origin){const polys=g.type==='Polygon'?[g.coordinates]:g.type==='MultiPolygon'?g.coordinates:[];for(const poly of polys)for(const ring of poly){for(let i=0;i<ring.length;i++){const c=ring[i],p=map.latLngToContainerPoint([c[1],c[0]]).subtract(origin);if(i===0)ctx.moveTo(p.x,p.y);else ctx.lineTo(p.x,p.y)}ctx.closePath()}}
+let plotFocus=false,hatchCache=null;
+function plotNotes(pid){const a=A.plots[pid],c=(CM['p'+pid]||[]).length,t=plotTitle(pid);if(!a&&!c&&!t)return null;const has=(a&&(a.label||ownerKey(a)!=='none'))||c||t;return has?{comments:c,label:a&&a.label,title:t&&t.t,owner:a&&ownerKey(a)}:null}
+function plotHatchPattern(ctx){if(hatchCache)return hatchCache;const c=document.createElement('canvas');c.width=c.height=8;const x=c.getContext('2d');x.strokeStyle='rgba(60,40,70,.28)';x.lineWidth=1;x.beginPath();x.moveTo(-1,9);x.lineTo(9,-1);x.moveTo(3,13);x.lineTo(13,3);x.moveTo(-5,5);x.lineTo(5,-5);x.stroke();return hatchCache=ctx.createPattern(c,'repeat')}
+function plotTickPoint(f){const bb=f.properties._bbox,g=f.geometry,ring=(g.type==='Polygon'?g.coordinates[0]:g.coordinates[0][0])||[];let best=null,bd=Infinity;for(const c of ring){const d=Math.hypot((c[0]-bb[0])*KX,(c[1]-bb[3])*KY);if(d<bd){bd=d;best=c}}return best||[bb[0],bb[3]]}
 const ParcelCanvasLayer=L.Layer.extend({
   onAdd(m){this._map=m;this._canvas=L.DomUtil.create('canvas','parcel-canvas');this._canvas.style.cssText='position:absolute;pointer-events:none';m.getPane('parcelPane').appendChild(this._canvas);m.on('moveend zoomend resize',this._draw,this);this._draw()},
   onRemove(m){m.off('moveend zoomend resize',this._draw,this);this._canvas.remove()},
@@ -1445,10 +1453,20 @@ const ParcelCanvasLayer=L.Layer.extend({
     const z=m.getZoom();if(z<PLOT_MINZ)return;
     const a=m.containerPointToLatLng([-pad,-pad]),zz=m.containerPointToLatLng([size.x+pad,size.y+pad]),box=[Math.min(a.lng,zz.lng),Math.min(a.lat,zz.lat),Math.max(a.lng,zz.lng),Math.max(a.lat,zz.lat)];
     for(const k of cellKeysFor(box))loadCell(k);
-    ctx.strokeStyle='rgba(122,92,126,.6)';ctx.lineWidth=.8;ctx.fillStyle='rgba(122,92,126,.025)';const coloured=[];
-    for(const f of plotsIn(box)){const ann=A.plots[f.properties.inspire_id];if(ann&&ownerKey(ann)!=='none'){coloured.push([f,ann]);continue}ctx.beginPath();drawParcelGeom(ctx,f.geometry,origin);ctx.fill('evenodd');ctx.stroke()}
-    for(const [f,ann] of coloured){const col=OWNER[ownerKey(ann)].colour;ctx.beginPath();drawParcelGeom(ctx,f.geometry,origin);ctx.fillStyle=col+'45';ctx.fill('evenodd');ctx.strokeStyle=col;ctx.lineWidth=2;ctx.stroke();
-      if(z>=15&&ann.label){const bb=f.properties._bbox,p=map.latLngToContainerPoint([(bb[1]+bb[3])/2,(bb[0]+bb[2])/2]).subtract(origin);ctx.font='600 11px system-ui,Arial';ctx.textAlign='center';ctx.lineWidth=3;ctx.strokeStyle='#fff';ctx.strokeText(ann.label,p.x,p.y+4);ctx.fillStyle='#1d2730';ctx.fillText(ann.label,p.x,p.y+4)}}
+    const onlyNoted=plotFocus;let hatch=plotHatchPattern(ctx);
+    const noted=[],plain=[];
+    for(const f of plotsIn(box)){(plotNotes(f.properties.inspire_id)?noted:plain).push(f)}
+    ctx.strokeStyle=onlyNoted?'rgba(122,92,126,.18)':'rgba(122,92,126,.6)';ctx.lineWidth=.8;ctx.fillStyle='rgba(122,92,126,.025)';
+    for(const f of plain){ctx.beginPath();drawParcelGeom(ctx,f.geometry,origin);if(!onlyNoted)ctx.fill('evenodd');ctx.stroke()}
+    for(const f of noted){const pid=f.properties.inspire_id,ann=A.plots[pid]||{},n=plotNotes(pid),ok=ownerKey(ann),col=ok==='none'?null:OWNER[ok].colour;
+      ctx.beginPath();drawParcelGeom(ctx,f.geometry,origin);
+      if(col){ctx.fillStyle=col+'45';ctx.fill('evenodd')}
+      ctx.fillStyle=hatch;ctx.fill('evenodd');
+      ctx.strokeStyle=col||'rgba(90,60,95,.85)';ctx.lineWidth=col?2:1.3;ctx.stroke();
+      if(z>=15){const bb=f.properties._bbox,pt=plotTickPoint(f),p=map.latLngToContainerPoint([pt[1],pt[0]]).subtract(origin);
+        ctx.beginPath();ctx.rect(p.x+4,p.y+4,7,7);ctx.fillStyle=n.comments?'#243746':'#fff';ctx.fill();ctx.lineWidth=1.5;ctx.strokeStyle='#243746';ctx.stroke();
+        const txt=ann.label||(plotTitle(pid)&&plotTitle(pid).t)||'';
+        if(txt){const c=map.latLngToContainerPoint([(bb[1]+bb[3])/2,(bb[0]+bb[2])/2]).subtract(origin);ctx.font='600 11px system-ui,Arial';ctx.textAlign='center';ctx.lineWidth=3;ctx.strokeStyle='#fff';ctx.strokeText(txt,c.x,c.y+4);ctx.fillStyle='#1d2730';ctx.fillText(txt,c.x,c.y+4)}}}
   }
 });
 const parcelLayer=new ParcelCanvasLayer().addTo(map);
@@ -1628,7 +1646,7 @@ function renderInspector(){
     box.innerHTML=html;
     box.querySelectorAll('[data-owner]').forEach(s=>s.addEventListener('click',()=>{ann.owner=s.dataset.owner;save();parcelLayer.redraw();renderInspector()}));
     $('[data-label]',box).addEventListener('change',e=>{ann.label=e.target.value.trim();save();parcelLayer.redraw()});
-    $('[data-title]',box).addEventListener('change',e=>{ann.title=cleanTitle(e.target.value);save();renderInspector()});
+    $('[data-title]',box).addEventListener('change',e=>{ann.title=cleanTitle(e.target.value);save();parcelLayer.redraw();renderInspector()});
     bindCommentForm(box,'p'+id);
   } else {const p=h.feature.properties;
     html=`<div class="ins-head"><span class="cat-ic" style="background:#1565c0">~</span><div class="ins-title"><div style="font-weight:700;font-size:15px;padding:3px 0">${esc(p.name)}</div><div class="ins-sub">${h.label}${p.covered?' · runs underground here':''}</div></div><button class="ins-close" data-close aria-label="Close">×</button></div>${pagerHtml()}<div class="ins-actions">${mapLinks(h.feature)}</div>`;
@@ -1724,6 +1742,7 @@ mainRiverLayer.remove();tributaryLayer.remove();osmLayer.remove();riversGroup.ad
   <div class="layer-sub">Type</div>${CAT_ORDER.map(c=>`<label class="layer-row"><input type="checkbox" checked data-cf="${c}">${catIcon(c)}<span>${CATS[c].label}</span><span class="count">${counts[c]||0}</span></label>`).join('')}
   <div class="layer-head group"><span>Reference</span><small>Fixed background layers</small></div>
   <label class="layer-row"><input type="checkbox" checked data-ref="parcels"><span>Land Registry plots</span><span class="count">zoom in</span></label>
+  <label class="layer-row sub"><input type="checkbox" data-plotfocus><span>Only plots with notes</span></label>
   <label class="layer-row"><input type="checkbox" checked data-ref="rivers"><span>River &amp; tributaries</span></label>
   <label class="layer-row"><input type="checkbox" checked data-ref="basin"><span>Catchment boundary</span></label>
   <div class="layer-row" id="restore-row" style="display:none"><span>Removed survey items</span><span class="count">0</span><button type="button" class="btn" data-restore>Restore all</button></div>`;
@@ -1733,13 +1752,14 @@ mainRiverLayer.remove();tributaryLayer.remove();osmLayer.remove();riversGroup.ad
   d.querySelectorAll('[data-cf]').forEach(i=>i.addEventListener('change',()=>{catOn[i.dataset.cf]=i.checked;refreshAllVisibility()}));
   $('[data-restore]',d).addEventListener('click',()=>{for(const r of recs.values())if(r.deleted){r.deleted=false;delete featAnn(r.id).deleted;applyVisibility(r)}save();updateRestoreRow();toast('Restored')});setTimeout(updateRestoreRow,0);
   d.querySelectorAll('[data-ref]').forEach(i=>i.addEventListener('change',()=>{const l=REF_LAYERS[i.dataset.ref];if(i.checked)map.addLayer(l);else map.removeLayer(l);updateHiddenNote()}));
+  $('[data-plotfocus]',d).addEventListener('change',e=>{plotFocus=e.target.checked;parcelLayer.redraw();updateHiddenNote()});
   $('[data-actmore]',a).addEventListener('click',loadOlderActivity);$('[data-showall]',d).addEventListener('click',showEverything);
   w.querySelectorAll('[data-closepanel]').forEach(b=>b.addEventListener('click',()=>togglePanel(w.dataset.panel)));
   $('#map').appendChild(w)})();
 function syncFilterControls(){document.querySelectorAll('[data-sf]').forEach(b=>b.classList.toggle('off',!statusOn[b.dataset.sf]));document.querySelectorAll('[data-cf]').forEach(i=>i.checked=!!catOn[i.dataset.cf]);
   document.querySelectorAll('[data-ref]').forEach(i=>i.checked=map.hasLayer(REF_LAYERS[i.dataset.ref]))}
-function hiddenCount(){return Object.values(statusOn).filter(v=>!v).length+Object.values(catOn).filter(v=>!v).length+Object.values(REF_LAYERS).filter(l=>!map.hasLayer(l)).length}
-function showEverything(){for(const k in statusOn)statusOn[k]=true;for(const k in catOn)catOn[k]=true;for(const l of Object.values(REF_LAYERS))if(!map.hasLayer(l))map.addLayer(l);syncFilterControls();refreshAllVisibility()}
+function hiddenCount(){return Object.values(statusOn).filter(v=>!v).length+Object.values(catOn).filter(v=>!v).length+Object.values(REF_LAYERS).filter(l=>!map.hasLayer(l)).length+(plotFocus?1:0)}
+function showEverything(){for(const k in statusOn)statusOn[k]=true;for(const k in catOn)catOn[k]=true;for(const l of Object.values(REF_LAYERS))if(!map.hasLayer(l))map.addLayer(l);if(plotFocus){plotFocus=false;const cb=$('[data-plotfocus]');if(cb)cb.checked=false;parcelLayer.redraw()}syncFilterControls();refreshAllVisibility()}
 function updateHiddenNote(){const n=hiddenCount();document.querySelector('.tool-btn[data-panel="layers"]')?.classList.toggle('has-hidden',n>0);$('[data-showall]')?.classList.toggle('on',n>0)}
 
 /* ---- recent changes ---- */
@@ -1779,8 +1799,8 @@ function keyLineSvg(cat){const c=CATS[cat],l=c.line||{};return `<svg viewBox="0 
 function keyAreaCanvas(cat){const cv=document.createElement('canvas');cv.width=34;cv.height=18;const x=cv.getContext('2d');x.fillStyle=makePattern(fillKind(cat,''),CATS[cat].colour);x.fillRect(0,0,34,18);x.strokeStyle='#5d6b77';x.lineWidth=1;x.strokeRect(.5,.5,33,17);return cv}
 const hasLine=new Set(),hasArea=new Set();for(const r of recs.values()){const t=geomType(r.feature.geometry);if(t==='LineString')hasLine.add(r.cat);if(t==='Polygon')hasArea.add(r.cat)}
 const legend=L.control({position:'bottomright'});legend.onAdd=()=>{const d=L.DomUtil.create('details','legend');let keyOpen='1';try{keyOpen=localStorage.getItem('roding-key-open')??'1'}catch(_){}d.open=keyOpen==='1';d.addEventListener('toggle',()=>{if(keyWasOpen!==null)return;try{localStorage.setItem('roding-key-open',d.open?'1':'0')}catch(_){}});
-  d.innerHTML=`<summary>Key</summary><h4>Colour = what needs doing</h4><div class="key-status">${Object.entries(STATUS).map(([k,s])=>`<span><svg class="key-pin" viewBox="0 0 30 38"><path d="M15 1C7.3 1 1.5 6.8 1.5 14.3c0 9.3 11.2 20.6 12.7 22.2a1.1 1.1 0 0 0 1.6 0C17.3 34.9 28.5 23.6 28.5 14.3 28.5 6.8 22.7 1 15 1z" fill="${s.colour}" stroke="#fff" stroke-width="1.8"/></svg>${s.label}</span>`).join('')}</div>
-  <h4>Rivers</h4><div class="key-status"><span><svg class="key-line" viewBox="0 0 34 12"><line x1="2" y1="6" x2="32" y2="6" stroke="#1a8fa8" stroke-width="3"/></svg>Open channel</span><span><svg class="key-line" viewBox="0 0 34 12"><line x1="2" y1="6" x2="32" y2="6" stroke="#1a8fa8" stroke-width="2.4" stroke-dasharray="6 5"/></svg>Underground</span></div><h4>Landowner status</h4><div class="key-status">${Object.entries(OWNER).filter(([k])=>k!=='none').map(([k,o])=>`<span><i class="key-plot" style="background:${o.colour}45;border-color:${o.colour}"></i>${o.label}</span>`).join('')}</div><h4>User-created</h4><div class="key-cat" data-keycat></div>`;
+  d.innerHTML=`<summary>Key</summary><h4>What needs doing</h4><div class="key-status">${Object.entries(STATUS).map(([k,s])=>`<span><svg class="key-pin" viewBox="0 0 30 38"><path d="M15 1C7.3 1 1.5 6.8 1.5 14.3c0 9.3 11.2 20.6 12.7 22.2a1.1 1.1 0 0 0 1.6 0C17.3 34.9 28.5 23.6 28.5 14.3 28.5 6.8 22.7 1 15 1z" fill="${s.colour}" stroke="#fff" stroke-width="1.8"/></svg>${s.label}</span>`).join('')}</div>
+  <h4>Rivers</h4><div class="key-status"><span><svg class="key-line" viewBox="0 0 34 12"><line x1="2" y1="6" x2="32" y2="6" stroke="#1a8fa8" stroke-width="3"/></svg>Open channel</span><span><svg class="key-line" viewBox="0 0 34 12"><line x1="2" y1="6" x2="32" y2="6" stroke="#1a8fa8" stroke-width="2.4" stroke-dasharray="6 5"/></svg>Underground</span></div><h4>Landowner status</h4><div class="key-status">${Object.entries(OWNER).filter(([k])=>k!=='none').map(([k,o])=>`<span><i class="key-plot" style="background:${o.colour}45;border-color:${o.colour}"></i>${o.label}</span>`).join('')}<span><i class="key-plot noted"></i>Plot with notes</span><span><i class="key-plot noted commented"></i>…with comments</span></div><h4>User-created</h4><div class="key-cat" data-keycat></div>`;
   const kc=$('[data-keycat]',d);for(const c of CAT_ORDER){const row=document.createElement('div');row.className='key-item';row.innerHTML=`${catIcon(c)}<span class="nm">${CATS[c].label}</span>`;const ln=document.createElement('span');ln.innerHTML=keyLineSvg(c);ln.firstChild.classList.toggle('na',!hasLine.has(c));row.appendChild(ln.firstChild);const ar=keyAreaCanvas(c);ar.classList.toggle('na',!hasArea.has(c));row.appendChild(ar);kc.appendChild(row)}
   L.DomEvent.disableClickPropagation(d);L.DomEvent.disableScrollPropagation(d);return d};legend.addTo(map);
 

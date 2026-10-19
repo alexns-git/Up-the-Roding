@@ -951,8 +951,8 @@ button{font:inherit}
 .toast{position:absolute;left:50%;bottom:28px;transform:translateX(-50%);z-index:1100;background:#243746;color:#fff;padding:8px 14px;border-radius:8px;box-shadow:0 2px 10px #0004;opacity:0;transition:opacity .25s;pointer-events:none}
 .toast.on{opacity:1}.toast.act{pointer-events:auto}.toast button{border:0;background:#fff;color:#243746;border-radius:5px;padding:3px 9px;margin-left:8px;cursor:pointer;font-weight:600}
 /* ---------- layers panel ---------- */
-.layers-wrap{display:flex;align-items:flex-start;gap:8px;margin:6px 0 0 10px}
-.layers{display:none;box-sizing:border-box;width:262px;max-height:60vh;overflow:auto;background:#fff;border-radius:10px;box-shadow:0 2px 10px #0003;padding:10px 12px}
+.layers-wrap{position:absolute;left:62px;top:62px;z-index:1000;max-height:calc(100% - 62px - 20px);display:flex}
+.layers{display:none;box-sizing:border-box;width:262px;max-height:100%;overflow:auto;background:#fff;border-radius:10px;box-shadow:0 2px 10px #0003;padding:10px 12px}
 .layers-wrap.open .layers{display:block}
 .layers h3{font-size:13px;margin:0 0 6px}
 .layer-head{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#5d6b77;margin:10px 0 4px;border-top:1px solid #e4e8eb;padding-top:8px;display:flex;justify-content:space-between}
@@ -1039,7 +1039,7 @@ button{font:inherit}
 .leaflet-container.over-feat,.leaflet-container.over-feat .leaflet-interactive{cursor:pointer}
 .key-plot{width:16px;height:12px;border:2px solid;border-radius:2px;display:inline-block;flex:none}
 
-.sync-pill{background:#fff;border-radius:999px;padding:4px 10px 4px 22px;font-size:11.5px;box-shadow:0 1px 6px #0003;position:relative;margin:0 0 6px 10px !important;color:#243746;white-space:nowrap}
+.sync-pill{background:#fff;border-radius:999px;padding:4px 10px 4px 22px;font-size:11.5px;box-shadow:0 1px 6px #0003;position:relative;margin:0 10px 6px 0 !important;color:#243746;white-space:nowrap;float:right}
 .sync-pill::before{content:'';position:absolute;left:9px;top:50%;width:7px;height:7px;margin-top:-3.5px;border-radius:50%;background:#2e9e4f}
 .sync-pill.wait::before{background:#ef8f00}.sync-pill.err{color:#b4232a}.sync-pill.err::before{background:#d32f2f}
 /* ---------- search ---------- */
@@ -1061,9 +1061,9 @@ button{font:inherit}
 .tool-dot{display:none;position:absolute;top:4px;right:4px;width:10px;height:10px;border-radius:50%;background:#ef8f00;border:2px solid #fff}
 .tool-btn.has-hidden .tool-dot{display:block}
 /* ---------- side panels ---------- */
-.layers-wrap .layers,.layers-wrap .activity-panel{display:none}
+.layers-wrap .layers,.layers-wrap .activity-panel{display:none;flex:none}
 .layers-wrap[data-panel="layers"] .layers,.layers-wrap[data-panel="activity"] .activity-panel{display:block}
-.activity-panel{box-sizing:border-box;width:310px;max-height:60vh;overflow:auto;background:#fff;border-radius:10px;box-shadow:0 2px 10px #0003;padding:10px 10px 10px 12px}
+.activity-panel{box-sizing:border-box;width:310px;max-height:100%;overflow:auto;background:#fff;border-radius:10px;box-shadow:0 2px 10px #0003;padding:10px 10px 10px 12px}
 .activity-panel h3{font-size:13px;margin:0 0 6px}
 .act-list{list-style:none;margin:0;padding:0}
 .act-day{font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:#5d6b77;margin:10px 0 3px;padding:8px 6px 0;border-top:1px solid #e4e8eb}
@@ -1075,11 +1075,6 @@ button{font:inherit}
 .act-st{display:inline-flex;align-items:center;gap:4px;font-weight:600}.act-st i{width:8px;height:8px;border-radius:50%;display:inline-block}
 .act-empty{color:#8a949c;padding:6px}
 .act-more{margin-top:8px;width:100%}
-/* ---------- hidden-items notice ---------- */
-.hidden-note{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:1050;background:#fff6e0;border:1px solid #f0d58a;color:#5a4300;padding:5px 6px 5px 12px;border-radius:999px;box-shadow:0 2px 8px #0002;display:none;align-items:center;gap:8px;font-size:12.5px;white-space:nowrap}
-.hidden-note.on{display:flex}
-.hidden-note button{border:0;background:#243746;color:#fff;border-radius:999px;padding:4px 11px;cursor:pointer;font-weight:600;font-size:12px}
-.draw-hint{top:56px}
 /* ---------- pin clusters ---------- */
 .pin-cluster-wrap{background:transparent;border:0}
 .pin-cluster{border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px #0006;box-sizing:border-box;cursor:pointer}
@@ -1091,12 +1086,20 @@ button{font:inherit}
 .name-bar input{font:inherit;font-weight:400;border:1px solid #c9d2d8;border-radius:6px;padding:5px 7px;min-width:0}
 .name-bar small{grid-column:1/-1;color:#5d6b77;font-size:11px}
 .leaflet-control.search{z-index:1100}
-.layers-wrap .layers,.layers-wrap .activity-panel{max-height:max(220px,calc(100vh - 420px))}
 
 .panel-head{display:flex;justify-content:space-between;align-items:center;margin:0 0 4px}
 .panel-head h3{margin:0}
 .sync-pill{opacity:0;transition:opacity .3s;pointer-events:none}
 .sync-pill.show{opacity:1}
+
+.icon-btn{border:0;background:none;cursor:pointer;color:#5d6b77;width:26px;height:26px;border-radius:6px;display:none;align-items:center;justify-content:center;position:relative;margin-left:auto;margin-right:2px}
+.icon-btn svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.icon-btn:hover{background:#eef3f6;color:#243746}
+.icon-btn.on{display:inline-flex;color:#c27100}
+.icon-btn[data-tip]:hover::after{content:attr(data-tip);position:absolute;right:0;top:30px;background:#243746;color:#fff;padding:4px 8px;border-radius:6px;white-space:nowrap;font-size:11.5px;font-weight:400;pointer-events:none;z-index:2}
+.panel-head .ins-close{margin-left:0}
+.panel-head h3{margin-right:auto}
+.draw-hint{top:12px}
 </style>
 </head>
 <body><div id="map"></div><div id="loading-screen" class="loading-screen"><div class="load-card">Loading River Roding map…</div></div>
@@ -1671,9 +1674,9 @@ function togglePanel(name){const w=$('#layers-wrap'),next=w.dataset.panel===name
 
 /* ---- side panels: layers & filters, recent changes ---- */
 const REF_LAYERS={parcels:parcelLayer,main:mainRiverLayer,trib:tributaryLayer,basin:basinLayer};
-const layersCtl=L.control({position:'topleft'});layersCtl.onAdd=()=>{const w=L.DomUtil.create('div','layers-wrap');w.id='layers-wrap';w.dataset.panel='';const d=document.createElement('div');d.className='layers';
+(function buildDrawer(){const w=document.createElement('div');w.className='layers-wrap';w.id='layers-wrap';w.dataset.panel='';const d=document.createElement('div');d.className='layers';
   const counts={};for(const r of recs.values())counts[r.cat]=(counts[r.cat]||0)+1;
-  d.innerHTML=`<div class="panel-head"><h3>Layers &amp; filters</h3><button type="button" class="ins-close" data-closepanel aria-label="Close">×</button></div><div class="layer-head"><span>What needs doing</span></div><div class="status-row">${Object.entries(STATUS).map(([k,s])=>`<button type="button" class="chip" data-sf="${k}"><i style="background:${s.colour}"></i>${s.label}</button>`).join('')}</div>
+  d.innerHTML=`<div class="panel-head"><h3>Layers &amp; filters</h3><button type="button" class="icon-btn show-all" data-showall data-tip="Show everything" aria-label="Show everything"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.7"/><path d="M4 4v5h5"/></svg></button><button type="button" class="ins-close" data-closepanel aria-label="Close">×</button></div><div class="layer-head"><span>What needs doing</span></div><div class="status-row">${Object.entries(STATUS).map(([k,s])=>`<button type="button" class="chip" data-sf="${k}"><i style="background:${s.colour}"></i>${s.label}</button>`).join('')}</div>
   <div class="layer-head"><span>What it is</span></div>${CAT_ORDER.map(c=>`<label class="layer-row"><input type="checkbox" checked data-cf="${c}">${catIcon(c)}<span>${CATS[c].label}</span><span class="count">${counts[c]||0}</span></label>`).join('')}
   <div class="layer-head"><span>Reference</span></div>
   <label class="layer-row"><input type="checkbox" checked data-ref="parcels"><span>Land Registry plots</span><span class="count">zoom in</span></label>
@@ -1687,14 +1690,14 @@ const layersCtl=L.control({position:'topleft'});layersCtl.onAdd=()=>{const w=L.D
   d.querySelectorAll('[data-cf]').forEach(i=>i.addEventListener('change',()=>{catOn[i.dataset.cf]=i.checked;refreshAllVisibility()}));
   $('[data-restore]',d).addEventListener('click',()=>{for(const r of recs.values())if(r.deleted){r.deleted=false;delete featAnn(r.id).deleted;applyVisibility(r)}save();updateRestoreRow();toast('Restored')});setTimeout(updateRestoreRow,0);
   d.querySelectorAll('[data-ref]').forEach(i=>i.addEventListener('change',()=>{const l=REF_LAYERS[i.dataset.ref];if(i.checked)map.addLayer(l);else map.removeLayer(l);updateHiddenNote()}));
-  $('[data-actmore]',a).addEventListener('click',loadOlderActivity);
+  $('[data-actmore]',a).addEventListener('click',loadOlderActivity);$('[data-showall]',d).addEventListener('click',showEverything);
   w.querySelectorAll('[data-closepanel]').forEach(b=>b.addEventListener('click',()=>togglePanel(w.dataset.panel)));
-  return w};layersCtl.addTo(map);
+  $('#map').appendChild(w)})();
 function syncFilterControls(){document.querySelectorAll('[data-sf]').forEach(b=>b.classList.toggle('off',!statusOn[b.dataset.sf]));document.querySelectorAll('[data-cf]').forEach(i=>i.checked=!!catOn[i.dataset.cf]);
   document.querySelectorAll('[data-ref]').forEach(i=>i.checked=map.hasLayer(REF_LAYERS[i.dataset.ref]))}
 function hiddenCount(){return Object.values(statusOn).filter(v=>!v).length+Object.values(catOn).filter(v=>!v).length+Object.values(REF_LAYERS).filter(l=>!map.hasLayer(l)).length}
 function showEverything(){for(const k in statusOn)statusOn[k]=true;for(const k in catOn)catOn[k]=true;for(const l of Object.values(REF_LAYERS))if(!map.hasLayer(l))map.addLayer(l);syncFilterControls();refreshAllVisibility()}
-function updateHiddenNote(){const n=hiddenCount(),el=$('#hidden-note');document.querySelector('.tool-btn[data-panel="layers"]')?.classList.toggle('has-hidden',n>0);if(el)el.classList.toggle('on',n>0)}
+function updateHiddenNote(){const n=hiddenCount();document.querySelector('.tool-btn[data-panel="layers"]')?.classList.toggle('has-hidden',n>0);$('[data-showall]')?.classList.toggle('on',n>0)}
 
 /* ---- recent changes ---- */
 const ACT_PAGE=40;let actRows=[],actLoaded=false,actLoading=false,actMore=false;
@@ -1738,15 +1741,15 @@ const legend=L.control({position:'bottomright'});legend.onAdd=()=>{const d=L.Dom
   L.DomEvent.disableClickPropagation(d);L.DomEvent.disableScrollPropagation(d);return d};legend.addTo(map);
 
 /* hint + toast elements */
-for(const [id,cls] of [['draw-hint','draw-hint'],['toast','toast'],['hidden-note','hidden-note']]){const el=document.createElement('div');el.id=id;el.className=cls;$('#map').appendChild(el)}
+for(const [id,cls] of [['draw-hint','draw-hint'],['toast','toast']]){const el=document.createElement('div');el.id=id;el.className=cls;$('#map').appendChild(el)}
 
 map.attributionControl.remove();
 const credits=L.control({position:'bottomright'});credits.onAdd=()=>{const d=L.DomUtil.create('details','credits');d.innerHTML='<summary>© Esri · OS · Environment Agency · HM Land Registry — credits</summary><div>Tiles © Esri and its data providers. River network: contains OS data © Crown copyright and database right 2026. Basin: © Environment Agency copyright and/or database right 2026. Plots: © Crown copyright and database rights 2026, reproduced with permission of HM Land Registry; polygons © Crown copyright and database rights 2026 Ordnance Survey AC0000851063 (<a href="https://use-land-property-data.service.gov.uk/datasets/inspire/#conditions" target="_blank" rel="noopener">INSPIRE conditions</a>). Survey observations: Paul\'s Google My Maps. Map built with <a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a>.</div>';L.DomEvent.disableClickPropagation(d);return d};credits.addTo(map);legend.remove();legend.addTo(map);
 map.on('zoomend',()=>map.getContainer().classList.toggle('z-far',map.getZoom()<14));
 map.fitBounds(L.geoJSON(basin).getBounds().pad(.025));map.getContainer().classList.toggle('z-far',map.getZoom()<14);
-const syncCtl=L.control({position:'bottomleft'});syncCtl.onAdd=()=>{const d=L.DomUtil.create('div','sync-pill wait');d.id='sync-pill';d.setAttribute('role','status');d.setAttribute('aria-live','polite');return d};syncCtl.addTo(map);renderSync();
+const syncCtl=L.control({position:'bottomright'});syncCtl.onAdd=()=>{const d=L.DomUtil.create('div','sync-pill wait');d.id='sync-pill';d.setAttribute('role','status');d.setAttribute('aria-live','polite');return d};syncCtl.addTo(map);renderSync();
 document.getElementById('loading-screen').classList.add('hidden');
-$('#hidden-note').innerHTML='Some items are hidden <button type="button">Show all</button>';$('#hidden-note button').addEventListener('click',showEverything);L.DomEvent.disableClickPropagation($('#hidden-note'));updateHiddenNote();
+updateHiddenNote();
 loadShared();
 
 </script></body></html>
